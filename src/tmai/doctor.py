@@ -118,6 +118,7 @@ def run_checks(cfg: dict, home: Path | None = None) -> list[Check]:
     checks += check_torch()
     checks.append(check_module("vgamepad", "Virtual gamepad", "pip install vgamepad and accept the ViGEmBus driver"))
     checks.append(check_module("dxcam", "Screen capture", 'pip install -e ".[game]"'))
+    checks.append(check_module("cv2", "OpenCV", 'pip install -e ".[game]"'))
     checks.append(check_ram(cfg))
     checks += check_openplanet(home)
     checks.append(check_disk(Path(cfg["run"]["output_dir"])))

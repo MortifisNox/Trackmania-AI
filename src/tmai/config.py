@@ -57,6 +57,10 @@ def validate(cfg: dict) -> None:
         raise ConfigError("train.batch_size must be a multiple of 8")
     if env["step_hz"] <= 0:
         raise ConfigError("env.step_hz must be positive")
+    from tmai.game.gamepad import BUTTONS
+
+    if env["restart_button"] not in BUTTONS:
+        raise ConfigError(f"env.restart_button must be one of {sorted(BUTTONS)}")
     if cfg["dashboard"]["host"] not in ("127.0.0.1", "localhost"):
         raise ConfigError("dashboard.host must stay on localhost")
 

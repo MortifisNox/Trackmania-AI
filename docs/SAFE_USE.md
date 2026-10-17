@@ -83,5 +83,6 @@ memory or speed.
   hosts).
 - The telemetry socket is localhost only.
 - No code path talks to Nadeo or Ubisoft services.
-- Planned for phase 1: the trainer refuses to start unless our plugin reports
-  Developer mode, if Openplanet's plugin API exposes that (to be verified).
+- Our telemetry plugin is unsigned, and Openplanet only loads unsigned plugins
+  in Developer mode, which implies School mode. So if `tmai telemetry` shows
+  data, School mode is on and records cannot reach official leaderboards.

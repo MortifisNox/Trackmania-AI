@@ -21,6 +21,7 @@ game = [
     "vgamepad>=0.1.0",
     "pywin32>=306; sys_platform == 'win32'",
     "dxcam>=0.0.5; sys_platform == 'win32'",
+    "opencv-python-headless>=4.9",
     "nvidia-ml-py>=12.535",
 ]
 dashboard = [

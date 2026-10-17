@@ -17,6 +17,10 @@ env:
   stuck_timeout_s: 3.0        # reset if speed stays below stuck_speed_kmh this long
   stuck_speed_kmh: 10.0
   telemetry_port: 9000        # Openplanet plugin -> Python (localhost only)
+  # Gamepad button that restarts the run. B is the game's default respawn,
+  # which restarts maps without checkpoints (like tmrl-test). For maps with
+  # checkpoints, bind "Give up" to a free button in game and set it here.
+  restart_button: B
 
 model:
   algorithm: sac_droq         # SAC actor + dropout/LayerNorm Q ensemble (DroQ)
