@@ -1,10 +1,16 @@
 name: Release
 
-# Pushing a tag like v0.1.0 publishes a GitHub release whose notes come from
-# docs/releases/<tag>.md.
+# Publishes a GitHub release whose notes come from docs/releases/<tag>.md.
+# Either push a tag like v0.1.0, or run this workflow from the Actions tab
+# with the tag name, which tags the current main.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.1.0"
+        required: true
 
 permissions:
   contents: write
@@ -17,11 +23,11 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           notes="docs/releases/${TAG}.md"
           if [ ! -f "$notes" ]; then
-            echo "Missing $notes: write the release notes there before tagging." >&2
+            echo "Missing $notes: write the release notes there before releasing." >&2
             exit 1
           fi
-          gh release create "$TAG" --title "$TAG" --notes-file "$notes" --verify-tag
+          gh release create "$TAG" --title "$TAG" --notes-file "$notes" --target "$GITHUB_SHA"
