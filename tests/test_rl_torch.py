@@ -217,6 +217,7 @@ def test_trainer_with_lidar_and_no_camera(tmp_path):
     buf.save(TrackStore(cfg["run"]["output_dir"], cfg["run"]["track"]).demos, 1500)
 
     cfg["env"]["lidar_beams"] = 5
+    cfg["env"]["lidar_far_origin"] = []
     cfg["env"]["camera"] = False
     trainer = Trainer(cfg, game=LidarGame(), device=torch.device("cpu"), log=lambda *_: None)
     assert trainer.demo is not None and trainer.demo.state.shape[1] == STATE_DIM + 5

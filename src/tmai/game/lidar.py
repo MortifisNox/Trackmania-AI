@@ -16,15 +16,16 @@ def wide_size(width: int, height: int, lidar_width: int) -> tuple[int, int]:
 
 
 class Lidar:
-    def __init__(self, beams: int, origin=(0.5, 0.6), dark: int = 90, hits: int = 2):
-        """`beams` spread evenly from straight left (-90 deg) through straight up
-        the screen to straight right; `origin` is (x, y) as fractions of the
-        image; a beam stops at the first `hits` pixels in a row darker than `dark`."""
+    def __init__(self, beams: int, origin=(0.5, 0.6), dark: int = 90, hits: int = 2, spread_deg: float = 90.0):
+        """`beams` spread evenly from `spread_deg` left of straight up the screen
+        to `spread_deg` right of it (90 = straight left to straight right);
+        `origin` is (x, y) as fractions of the image; a beam stops at the first
+        `hits` pixels in a row darker than `dark`."""
         self.beams = beams
         self.origin = origin
         self.dark = dark
         self.hits = hits
-        self.angles = np.radians(np.linspace(-90.0, 90.0, beams)) if beams > 1 else np.zeros(beams)
+        self.angles = np.radians(np.linspace(-spread_deg, spread_deg, beams)) if beams > 1 else np.zeros(beams)
         self._shape: tuple[int, int] | None = None
         self._rays: list[tuple[np.ndarray, np.ndarray]] = []
 
@@ -70,7 +71,38 @@ class Lidar:
         return out
 
 
-def from_config(env: dict) -> Lidar | None:
+class LidarLayers:
+    """Several fans of beams measured on the same frame, readings concatenated:
+    a near fan just above the car and a far fan higher up the picture, further
+    down the road. A ramp or a crest stretches or cuts the far fan first, so
+    together with the car's pitch they work like a lidar tilted at two angles."""
+
+    def __init__(self, layers: list[Lidar]):
+        self.layers = layers
+        self.beams = sum(layer.beams for layer in layers)
+
+    def measure(self, gray: np.ndarray) -> np.ndarray:
+        return np.concatenate([layer.measure(gray) for layer in self.layers])
+
+    def endpoints(self, gray: np.ndarray, lengths: np.ndarray):
+        out, i = [], 0
+        for layer in self.layers:
+            out.append(layer.endpoints(gray, lengths[i:i + layer.beams]))
+            i += layer.beams
+        return out   # one list of beams per layer, near first
+
+
+def beam_count(env: dict) -> int:
+    """Lidar readings in the state vector: beams per fan times the number of fans."""
+    n = int(env.get("lidar_beams") or 0)
+    return n * (2 if n and env.get("lidar_far_origin") else 1)
+
+
+def from_config(env: dict) -> LidarLayers | None:
     if not env.get("lidar_beams"):
         return None
-    return Lidar(env["lidar_beams"], tuple(env["lidar_origin"]), env["lidar_dark"])
+    layers = [Lidar(env["lidar_beams"], tuple(env["lidar_origin"]), env["lidar_dark"])]
+    if env.get("lidar_far_origin"):
+        layers.append(Lidar(env["lidar_beams"], tuple(env["lidar_far_origin"]), env["lidar_dark"],
+                            spread_deg=env["lidar_far_spread_deg"]))
+    return LidarLayers(layers)
