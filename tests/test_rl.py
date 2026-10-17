@@ -120,3 +120,18 @@ def test_replay_n_step_returns():
     one = buf.sample(64, np.random.default_rng(1), n_step=1, gamma=0.5)
     assert np.all(one["next_frames"][:, -1, 0, 0] == one["frames"][:, -1, 0, 0] + 1)
 
+
+
+def test_replay_scores_the_pace_term_when_sampling():
+    buf = ReplayBuffer(16, 4, stack=1, state_dim=STATE_DIM)
+    buf.start_episode()
+    buf.add(np.full((4, 4), 0, np.uint8), np.zeros(STATE_DIM), np.zeros(3), 1.0, pace=(0.0, 0.1, 0.5))
+    buf.add(np.full((4, 4), 1, np.uint8), np.zeros(STATE_DIM), np.zeros(3), 2.0)    # no pace inputs (older rows)
+    buf.add(np.full((4, 4), 2, np.uint8), np.zeros(STATE_DIM))
+    idx = np.array([0, 1])
+    assert list(buf.rewards(idx)) == [1.0, 2.0]
+    pace_fn = lambda u0, u1, dt: 10 * (u1 - u0) - dt                     # noqa: E731
+    np.testing.assert_allclose(buf.rewards(idx, pace_fn), [1.0 + 1.0 - 0.5, 2.0])
+    batch = buf.sample(64, np.random.default_rng(0), n_step=1, pace_fn=pace_fn)
+    first = batch["frames"][:, -1, 0, 0] == 0
+    np.testing.assert_allclose(batch["reward"][first], 1.5)

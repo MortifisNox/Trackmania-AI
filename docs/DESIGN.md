@@ -50,8 +50,14 @@ self-improving reference line.**
 4. **Reward.** Progress along the reference line per step (as TMRL does), a
    penalty for wall contact and a time penalty, plus a bonus for beating the
    best checkpoint split. A pace term pays for every second gained on the
-   reference lap over each stretch of track (and charges for seconds lost),
-   so going faster is rewarded point by point, not only at the finish.
+   pace baseline over each stretch of track (and charges for seconds lost),
+   so going faster is rewarded point by point, not only at the finish. The
+   baseline is the average of the agent's last 20 finished laps, measured
+   point by point (the reference lap until 5 laps are in), so beating its own
+   recent driving keeps paying once laps stop being personal bests. Replay
+   stores the pace term's inputs and scores it against the current baseline
+   every batch, so old laps are judged by today's standard. A finish faster
+   than the best lap so far earns a personal-best bonus.
    Episodes end on finish, being stuck, or timeout.
 5. **Continuous improvement.** The reference line starts as your demo lap.
    Whenever the agent sets a new best lap, that lap becomes the reference, so

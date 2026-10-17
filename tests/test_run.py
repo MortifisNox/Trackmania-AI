@@ -74,6 +74,21 @@ def test_snapshot_roundtrip(tmp_path):
     assert batch["frames"].shape == (32, 4, 8, 8)
 
 
+def test_snapshot_from_before_pace_inputs_still_loads(tmp_path):
+    buf = filled_buffer(steps=100)
+    path = snapshot.save_replay(buf, tmp_path)
+    manifest = json.loads((path / "manifest.json").read_text())
+    for key in ("pace_u0", "pace_u1", "pace_dt"):                        # what an older snapshot looks like
+        (path / f"{key}.npy").unlink()
+        del manifest["files"][key]
+    (path / "manifest.json").write_text(json.dumps(manifest))
+    fresh = ReplayBuffer(500, 8, 4)
+    fresh.pace_dt[:] = 1.0
+    assert snapshot.load_replay(fresh, tmp_path) is not None
+    assert np.isnan(fresh.pace_dt).all()
+    np.testing.assert_array_equal(fresh.reward, buf.reward)
+
+
 def test_snapshot_while_driving_has_no_torn_transitions(tmp_path, monkeypatch):
     monkeypatch.setattr(snapshot, "CHUNK_BYTES", 2000)   # many small chunks, so writes interleave
     buf = filled_buffer(steps=300)

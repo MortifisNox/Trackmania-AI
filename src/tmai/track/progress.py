@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from tmai.game.protocol import Telemetry
+from tmai.track.baseline import PaceBaseline
 from tmai.track.reference import ReferenceLine
 from tmai.track.splits import SplitTracker
 
@@ -24,11 +25,17 @@ class StepInfo:
     split_delta_ms: int | None = None
     crashed: bool = False
     terms: dict = field(default_factory=dict)
+    # (lap fraction before, after, race seconds) for the pace term, so replay can
+    # score it again against a newer baseline; None when the step has no pace term.
+    pace_inputs: tuple[float, float, float] | None = None
 
 
 class ProgressTracker:
-    def __init__(self, ref: ReferenceLine, cfg: dict, splits: SplitTracker | None = None):
+    def __init__(self, ref: ReferenceLine, cfg: dict, splits: SplitTracker | None = None,
+                 baseline: PaceBaseline | None = None):
         self.ref = ref
+        self.baseline = baseline or PaceBaseline(ref)   # default: pace against the reference lap
+        self.best_lap_ms: int | None = None              # personal best, for the finish bonus
         self.track = cfg["track"]
         self.rw = cfg["reward"]
         self.env = cfg["env"]
@@ -76,13 +83,13 @@ class ProgressTracker:
         # step's worth; more when the game or the loop stalled, and that time is
         # as lost as any other, so the time and pace terms charge all of it.
         dt = (max(tel.race_time_ms, 0) - max(self._prev_time_ms, 0)) / 1000.0
-        pace = 0.0
-        if self.ref.times is not None and self.rw["pace_per_s"] and (delta or dt > 0):
-            # Seconds gained on the reference lap over this stretch of track. Gains
-            # are capped against projection glitches; losses are capped only by
-            # the time that really passed.
-            ref_dt = self.ref.time_at(s) - self.ref.time_at(self._s) if delta else 0.0
-            pace = float(np.clip(ref_dt - dt, -max(0.2, dt), 0.2))
+        pace, pace_inputs = 0.0, None
+        if self.baseline.times is not None and self.rw["pace_per_s"]:
+            # Seconds gained on the pace baseline over this stretch of track.
+            length = self.ref.length or 1.0
+            u0 = self._s / length
+            pace_inputs = (u0, s / length if delta else u0, dt)
+            pace = float(self.baseline.pace(*pace_inputs))
         self._prev_time_ms = tel.race_time_ms
         self._idx, self._s = idx, s
         self._max_s = max(self._max_s, s)
@@ -107,6 +114,10 @@ class ProgressTracker:
         if tel.finished:
             done = "finished"
             terms["finish"] = self.rw["finish_bonus"]
+            lap_ms = tel.last_cp_time_ms or tel.race_time_ms
+            if self.best_lap_ms and lap_ms < self.best_lap_ms:
+                gain_s = (self.best_lap_ms - lap_ms) / 1000.0
+                terms["personal_best"] = min(self.rw["pb_bonus_cap"], self.rw["pb_bonus_per_s"] * gain_s)
         elif self._max_s - s > self.track["wrong_way_m"]:
             done = "wrong_way"
         elif self.track["off_track_m"] > 0 and lateral > self.track["off_track_m"]:
@@ -120,4 +131,5 @@ class ProgressTracker:
             progress=s / self.ref.length if self.ref.length else 0.0,
             lateral_m=lateral, delta_m=delta, lookahead=lookahead, done=done,
             split_delta_ms=split_delta, crashed=crashed, terms=terms,
+            pace_inputs=pace_inputs,
         )

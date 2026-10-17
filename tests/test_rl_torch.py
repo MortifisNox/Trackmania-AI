@@ -252,3 +252,28 @@ def test_test_laps_drive_without_noise_and_keep_the_best(tmp_path):
     assert trainer.best_eval_ms is not None
     best = torch.load(run_dir / "checkpoints" / "best_test_lap.pt", weights_only=False)
     assert best["lap_ms"] == trainer.best_eval_ms and "actor" in best["policy"]
+
+
+def test_finished_laps_feed_the_pace_baseline(tmp_path):
+    from tmai.rl.env import TMEnv
+    from tmai.rl.train import Trainer
+
+    cfg = small_cfg(tmp_path)
+    cfg["reward"]["pace_baseline_min_laps"] = 2
+    make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    assert trainer.tracker.baseline is trainer.baseline and not trainer.baseline.from_recent_laps
+    env = TMEnv(cfg, trainer.game, trainer.tracker)
+    laps = []
+    for _ in range(2):
+        ep = trainer.run_episode(env)
+        assert ep["end"] == "finished"
+        trainer.add_baseline_lap(ep)
+        laps.append(ep["lap_ms"] / 1000)
+    assert trainer.baseline.from_recent_laps
+    assert trainer.baseline.lap_time_s == pytest.approx(np.mean(laps), abs=0.15)   # within a step or two of the line's end
+    # stored rewards leave the pace term out; sampling adds it back from the inputs
+    stored = ~np.isnan(trainer.online.pace_dt[:trainer.online.size])
+    assert stored.any()
+    batch = trainer.sample()
+    assert np.isfinite(batch["reward"]).all()

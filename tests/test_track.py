@@ -199,3 +199,40 @@ def test_stalls_and_late_starts_cost_the_time_they_lose():
     tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=-1500))             # countdown frames (demos) cost nothing extra
     countdown = tr.step(tel(pos=(0.0, 0.0, 0.0), race_time_ms=-1450))
     assert "pace" not in countdown.terms and countdown.terms["time"] == pytest.approx(-0.01)
+
+
+def test_pace_baseline_follows_the_average_of_recent_laps():
+    from tmai.track.baseline import PaceBaseline
+
+    xs = np.linspace(0, 100, 101)
+    line = np.stack([xs, 0 * xs, 0 * xs], 1)
+    ref = ReferenceLine.from_positions(line, 1.0, xs / 10.0)              # reference lap: 10 s at 10 m/s
+    base = PaceBaseline(ref, laps=3, min_laps=2)
+    assert not base.from_recent_laps and base.lap_time_s == pytest.approx(10.0)
+    assert base.pace(0.0, 0.1, 1.0) == pytest.approx(0.0)                # on reference pace
+    base.add_lap(line, xs / 8.0)                                          # 12.5 s lap: one is not enough
+    assert base.lap_time_s == pytest.approx(10.0)
+    base.add_lap(line, xs / 5.0)                                          # 20 s lap
+    assert base.from_recent_laps and base.lap_time_s == pytest.approx(16.25)
+    # 10 m in 1 s: 1.625 s for the baseline, but gains are capped at 0.2 s a step
+    assert base.pace(0.0, 0.1, 1.0) == pytest.approx(0.2)
+    assert base.pace(0.0, 0.01, 0.1) == pytest.approx(0.1625 - 0.1)
+    for lap in (xs / 10.0,) * 3:                                          # only the last 3 laps count
+        base.add_lap(line, lap)
+    assert base.lap_count == 3 and base.lap_time_s == pytest.approx(10.0)
+    np.testing.assert_allclose(base.pace(np.array([0.0, 0.5]), np.array([0.01, 0.5]), np.array([0.05, 0.05])),
+                               [0.05, -0.05])
+    longer = ReferenceLine.from_positions(np.stack([2 * xs, 0 * xs, 0 * xs], 1), 1.0, xs / 5.0)
+    base.set_ref(longer)                                                  # laps measured along the new line
+    assert base.lap_count == 3 and base.lap_time_s == pytest.approx(10.0)
+
+
+def test_personal_best_bonus_at_the_finish():
+    cfg = load_config(None, ["reward.pb_bonus_per_s=20", "reward.pb_bonus_cap=5"])
+    tr = ProgressTracker(ReferenceLine.from_positions(straight(), 1.0), cfg)
+    fin = protocol.FLAG_PLAYER | protocol.FLAG_FINISHED
+    for best, lap, bonus in ((None, 20_000, None), (21_000, 21_500, None), (21_000, 20_900, 2.0), (21_000, 20_000, 5.0)):
+        tr.best_lap_ms = best
+        tr.reset(tel(pos=(0.0, 0.0, 0.0)))
+        info = tr.step(tel(pos=(1.0, 0.0, 0.0), flags=fin, race_time_ms=lap))
+        assert info.terms.get("personal_best") == (None if bonus is None else pytest.approx(bonus))

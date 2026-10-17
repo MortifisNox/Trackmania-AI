@@ -21,7 +21,10 @@ import numpy as np
 
 from tmai.run import atomic
 
-ARRAYS = ("frames", "state", "action", "reward", "terminal", "has_next", "episode")
+ARRAYS = ("frames", "state", "action", "reward", "terminal", "has_next", "episode",
+          "pace_u0", "pace_u1", "pace_dt")
+# Arrays older snapshots may lack, and the value that means "not recorded".
+OPTIONAL = {"pace_u0": np.nan, "pace_u1": np.nan, "pace_dt": np.nan}
 SCALARS = ("pos", "size", "_episode", "transitions")
 FORMAT = 1
 CHUNK_BYTES = 4 << 20    # rows copied per lock hold (about 1 ms of memcpy)
@@ -149,6 +152,9 @@ def load_replay(buffer, folder: str | Path, log=print) -> dict | None:
             log(f"replay snapshot {path.name} has a different buffer size or shape; not restored")
             return None
         for key in ARRAYS:
+            if key not in manifest["files"] and key in OPTIONAL:
+                getattr(buffer, key).fill(OPTIONAL[key])   # snapshot from before this array existed
+                continue
             src = np.load(path / f"{key}.npy", mmap_mode="r")
             getattr(buffer, key)[:] = src
             del src
