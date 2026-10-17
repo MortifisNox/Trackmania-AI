@@ -46,6 +46,7 @@ class TMEnv:
     def reset(self) -> Obs:
         self.game.pad.release()
         self.game.restart()
+        self.game.take_input_interruption()
         self.monitor.reset()
         self.clock.reset()
         self._prev_action = np.array([0.0, -1.0, -1.0], dtype=np.float32)   # no input
@@ -65,7 +66,10 @@ class TMEnv:
         frame, tel = self.game.observe()
         self.last_tel = tel
         info = self.tracker.step(tel)
-        reason = info.done or self.monitor.check(tel)
+        # Actions held back while Windows UI was in front never reached the
+        # car, so end the attempt there (a cut-off, not an outcome).
+        blocked = self.game.take_input_interruption()
+        reason = info.done or self.monitor.check(tel) or ("blocked" if blocked else None)
         self._prev_action = action
         obs = self._obs(frame, tel, info.lookahead)
         if reason:

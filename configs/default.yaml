@@ -22,6 +22,12 @@ env:
   # which restarts maps without checkpoints (like tmrl-test). For maps with
   # checkpoints, bind "Give up" to a free button in game and set it here.
   restart_button: B
+  # Windows reads the virtual pad as a real controller, so menus like Alt+Tab,
+  # Start and Game Bar would move with the agent's steering. shell: hold the
+  # pad neutral while Alt/Win is held or such a menu is in front (the game may
+  # stay in the background). game: only drive while the game is in front.
+  # off: never hold back.
+  input_guard: shell
   # window: capture the game window directly (works behind other windows).
   # screen: capture the screen area (game must be visible and on top).
   capture_backend: window
