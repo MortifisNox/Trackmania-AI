@@ -42,7 +42,7 @@ self-improving reference line.**
 3. **Observations.** A state vector: from the Openplanet plugin, speed, gear,
    RPM, wheel contact and surface material, wheel slip, velocity in the car
    frame, pitch and roll, and the previous action; 10 points of the reference
-   line ahead of the car, in 3D, so slopes and ramps ahead show up as height; and two fans of 19 screen-lidar beams (as in TMRL), one near and one further down the road, measuring how far the track
+   line ahead of the car, in 3D, so slopes and ramps ahead show up as height; and 19 screen-lidar beams (as in TMRL; an optional second fan reads further down the road) measuring how far the track
    border is in each direction ahead (see [LIDAR.md](LIDAR.md)). The camera
    image is off by default; `env.camera: true` adds a CNN over 4 stacked 64x64
    grayscale frames with random-shift augmentation (DrQ).

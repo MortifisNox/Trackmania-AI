@@ -41,8 +41,9 @@ env:
   lidar_dark: 90              # 0..255 grayscale; darker pixels count as border
   # A second, far fan of lidar_beams beams starting higher up the picture, so
   # ramps, crests and turns change its readings before the car gets there.
-  # [] turns it off. It spreads lidar_far_spread_deg to each side of straight ahead.
-  lidar_far_origin: [0.5, 0.52]
+  # [] turns it off (the default). It spreads lidar_far_spread_deg to each side
+  # of straight ahead. Try it with --set env.lidar_far_origin=[0.5,0.52].
+  lidar_far_origin: []
   lidar_far_spread_deg: 60
 
 track:
