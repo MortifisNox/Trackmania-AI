@@ -252,3 +252,19 @@ def test_one_bad_lap_does_not_move_the_pace_baseline():
     base.add_lap(line, crash)
     assert base.lap_time_s == pytest.approx(10.0)
     assert base.pace(0.4, 0.6, 2.0) == pytest.approx(0.0)
+
+
+def test_pace_baseline_state_round_trips():
+    from tmai.track.baseline import PaceBaseline
+
+    xs = np.linspace(0, 100, 101)
+    line = np.stack([xs, 0 * xs, 0 * xs], 1)
+    ref = ReferenceLine.from_positions(line, 1.0, xs / 10.0)
+    base = PaceBaseline(ref, laps=20, min_laps=2)
+    for extra in (0.0, 1.0, 2.0):
+        base.add_lap(line, xs / 10.0 + extra * xs / 100.0)
+    again = PaceBaseline(ref, laps=20, min_laps=2)
+    again.load_state(base.state())
+    assert again.lap_count == 3 and again.lap_time_s == pytest.approx(base.lap_time_s)
+    again.load_state(None)
+    assert again.lap_count == 0 and not again.from_recent_laps
