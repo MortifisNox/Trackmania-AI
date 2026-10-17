@@ -20,7 +20,8 @@ env:
   telemetry_port: 9000        # Openplanet plugin -> Python (localhost only)
   # Gamepad button that restarts the run. B is the game's default respawn,
   # which restarts maps without checkpoints (like tmrl-test). For maps with
-  # checkpoints, bind "Give up" to a free button in game and set it here.
+  # checkpoints (like Test1), bind "Give up" to View/Back in the game's
+  # Settings > Controls and pass --set env.restart_button=BACK.
   restart_button: B
   # After a personal best the game shows its end-of-race menu, which ignores
   # the restart button. This button picks the menu's default choice, Improve.
@@ -74,7 +75,7 @@ train:
   gamma: 0.995
   n_step: 3                   # rewards summed over this many steps before bootstrapping (Linesight uses 3)
   tau: 0.005
-  updates_per_step: 4         # update-to-data ratio; auto-lowered when hot
+  updates_per_step: 4         # update-to-data ratio: learner updates per driving step
   warmup_steps: 1000          # steps of the untrained (near-random) policy before learning starts
   # Share of each batch drawn from guide laps: your demo laps plus the agent's own
   # fastest laps. Starts at demo_ratio (RLPD) and falls linearly to demo_ratio_end
@@ -104,8 +105,8 @@ replay:
 gpu:
   # Hard cap on the share of VRAM PyTorch may allocate, leaving room for the game.
   max_vram_fraction: 0.5
-  # NVML temperature thresholds (deg C): above soft, halve updates_per_step;
-  # above hard, pause learning until the GPU cools below soft.
+  # Planned thermal governor, not used yet. NVML temperature thresholds (deg C):
+  # above soft, halve updates_per_step; above hard, pause learning until it cools.
   temp_soft_c: 80
   temp_hard_c: 87
 

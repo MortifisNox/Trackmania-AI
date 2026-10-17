@@ -1,15 +1,16 @@
-# Phase 1: testing the game connection
+# Checking the game connection
 
-This checks that Python can read the car's state, drive it with the virtual
-controller, see the screen, and keep a steady 20 steps per second.
+Optional checks that Python can read the car's state, drive it with the
+virtual controller, see the screen, and keep a steady 20 steps per second.
+Useful the first time, or when something in the game connection seems off.
+Day-to-day use is in [EVERYDAY_USE.md](EVERYDAY_USE.md).
 
 ## 1. Update the code
 
 ```powershell
 cd "D:\AI Projects\Trackmania AI"
 .\.venv\Scripts\Activate.ps1
-git fetch origin
-git checkout -B main origin/main
+git pull
 pip install -e ".[game,dashboard,dev]"
 ```
 
@@ -26,10 +27,11 @@ tmai install-plugin
 tmai get-map
 ```
 
-In game: **F3 > Developer > (Re)load plugin > TMAI Telemetry** (or restart the
-game). Open **F3 > Openplanet > Log**: you should see
-`TMAI: waiting for tmai on port 9000`. If you see red errors instead, copy them
-into the project thread.
+In game: **F3 > Developer > (Re)load plugin**, then **TMAI Telemetry** and
+**TMAI Ghost** (or restart the game). Open **F3 > Openplanet > Log**: you
+should see `TMAI: waiting for tmai on port 9000` and
+`TMAI Ghost: watching for the agent's finishes`. If you see red errors
+instead, copy them into the project thread.
 
 ## 4. Load the map
 
@@ -40,9 +42,9 @@ minimised.
 
 You can use your own map instead, as long as it is a local map file (see
 SAFE_USE.md). If it has checkpoints, the default restart button **B** respawns
-at the last checkpoint instead of the start. In that case open the game's
-**Settings > Controls**, bind **Give up** (restart from the start) to a free
-gamepad button such as **View/Back**, and run the tests like
+at the last checkpoint instead of the start. Bind **Give up** to **View/Back**
+in the game's **Settings > Controls** (see
+[SETUP_WINDOWS.md](SETUP_WINDOWS.md#7-game-settings)) and run the tests like
 `tmai --set env.restart_button=BACK gamepad-test`.
 
 ## 5. Run the checks

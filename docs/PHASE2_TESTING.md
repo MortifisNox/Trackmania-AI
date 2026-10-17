@@ -1,23 +1,25 @@
-# Phase 2: demo laps, reference line and reward
+# Recording demo laps for a map
 
-You drive a few clean laps; the fastest becomes the **reference line** the
-agent's progress and lookahead are measured against. Your laps are also kept
-to give the learner a head start in phase 3.
+Do this once per new map, before training on it. You drive a few clean laps;
+the fastest becomes the **reference line** the AI's progress is measured
+along. Your laps are also kept to give the AI a head start: early in training
+half of what it learns from comes from your laps, falling to a tenth over the
+first few hours.
 
 ## 1. Update
 
 ```powershell
 cd "D:\AI Projects\Trackmania AI"
 .\.venv\Scripts\Activate.ps1
-git fetch origin
-git checkout -B main origin/main
+git pull
 ```
 
 ## 2. Name your track
 
-Pick a short name for your map (letters, digits, spaces, `-`, `_`) and use it
-with `--set run.track=NAME` on every command below, for example
-`--set run.track=MyMap`. Data goes to `runs\tracks\NAME\`.
+Use the map's name as the game shows it (case and spaces do not matter), for
+example `Test1`, with `--set run.track=NAME` on every command below and when
+you train. The best-lap replay is found by that name. Data goes to
+`runs\tracks\NAME\`.
 
 ## 3. Record demo laps
 
@@ -43,4 +45,10 @@ far you are from it, the reward the agent would get, and the next lookahead
 point. At each checkpoint it prints your split against your best demo lap.
 Driving backwards ends the attempt with `wrong_way`.
 
-Paste the output in the project thread.
+This step is optional. Then train: [EVERYDAY_USE.md](EVERYDAY_USE.md). For a
+map other than your first one, also give it its own run folder with
+`--set run.name=NAME` (see
+[EVERYDAY_USE.md](EVERYDAY_USE.md#training-on-a-new-map)).
+
+If the line looks wrong, `tmai --set run.track=MyMap build-reference` rebuilds
+it from your fastest saved demo lap.

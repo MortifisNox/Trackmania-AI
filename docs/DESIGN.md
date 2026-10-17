@@ -89,17 +89,18 @@ self-improving reference line.**
                                    + TensorBoard
 ```
 
-- **Two processes** so a slow gradient step never delays a control step.
-  Phase 3 starts with a learner *thread* (PyTorch releases the GIL in GPU
-  work) and prints control-step lateness per run; it moves to a process if
-  that lateness is too high on the laptop.
+- **Learner in its own thread** so a slow gradient step never delays a
+  control step (PyTorch releases the GIL in GPU work). Each run prints its
+  control-step lateness (`late p99`); on the laptop it stays at 1 to 2 ms, so
+  a separate learner process has not been needed.
 - **Replay buffer in system RAM** as uint8 frames stored once (stacks rebuilt
   on sampling): ~4.2 KB per transition, 500k transitions ≈ 2 GB. `tmai doctor`
   suggests a capacity for your RAM.
 - **VRAM budget**: ~2M-parameter networks, batch 256, bf16 autocast on the
   4050's tensor cores with fp32 master weights. Expected under 1.5 GB; capped
   at 50% with `torch.cuda.set_per_process_memory_fraction`.
-- **Thermal governor**: NVML temperature polling; above 80 °C the UTD ratio is
+- **Thermal governor** *(planned, not built yet; the `gpu.temp_*` settings
+  are not used)*: NVML temperature polling; above 80 °C the UTD ratio is
   halved, above 87 °C learning pauses (driving continues) until it cools.
 - **Crash-safe state**: checkpoints and replay snapshots are written to a temp
   file and atomically renamed, so a power cut or crash leaves the previous
@@ -117,7 +118,7 @@ Details: [DASHBOARD.md](DASHBOARD.md).
 - Live: speed, inputs, current lap time, checkpoint splits against the best
   lap, episode reward, lap times, losses, entropy, Q-values, temperature.
   Any metric the learner reports gets its own chart, so GPU temperature,
-  VRAM and UTD appear once the thermal governor reports them.
+  VRAM and UTD will appear once the thermal governor reports them.
 - Controls: pause/resume, change learning rate / UTD / entropy target / demo
   share at runtime, force a track reset, save checkpoint, stop safely.
   Switching track comes with multi-track training (phase 7).

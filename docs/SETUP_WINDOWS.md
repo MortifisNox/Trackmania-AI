@@ -1,8 +1,9 @@
 # Setting up the gaming laptop
 
-Everything here runs on your Windows laptop (RTX 4050 Laptop GPU). Do the steps
-in order; step 9 checks the result. Read [SAFE_USE.md](SAFE_USE.md) before the
-first training run.
+One-time setup of the Windows laptop (RTX 4050 Laptop GPU). Do the steps in
+order; step 9 checks the result and step 10 gets you to the first training
+run. Read [SAFE_USE.md](SAFE_USE.md) before you train. After setup, the
+day-to-day steps are in [EVERYDAY_USE.md](EVERYDAY_USE.md).
 
 ## 1. NVIDIA driver
 
@@ -25,11 +26,11 @@ downloads" page.
 
 1. Install Trackmania (2020) from Ubisoft Connect, Steam or Epic and log in.
 2. Start it once and reach the main menu.
-3. Tell me which edition you have (Starter, Standard or Club). Club is needed
-   later for our own telemetry plugin, because Openplanet only loads unsigned
-   (self-made) plugins in Developer mode, which needs Club
-   ([Openplanet: Club](https://openplanet.dev/next/club)). Phase 1 works on
-   Starter using TMRL's already-signed plugin.
+
+You need **Club** access. Our two plugins are self-made (unsigned), and
+Openplanet only loads those in Developer mode, which needs Club
+([Openplanet: Club](https://openplanet.dev/next/club)). Saving the best lap
+as a replay needs Club too.
 
 ## 4. Openplanet
 
@@ -39,9 +40,9 @@ downloads" page.
    warning).
 2. Start the game once, so `C:\Users\<you>\OpenplanetNext` is created.
 3. Press **F3** to open the Openplanet overlay, then
-   **Openplanet > Signature Mode** and pick **School** (or **Developer** if you
-   have Club). Both block online play and record submission to official
-   leaderboards, which keeps training runs away from them. See SAFE_USE.md.
+   **Openplanet > Signature Mode** and pick **Developer**. It lets our plugins
+   load, and it also blocks online play and record submission to official
+   leaderboards, which keeps training away from them. See SAFE_USE.md.
 
 ## 5. Python and Git
 
@@ -82,8 +83,14 @@ the game should be light and consistent:
 - Graphics preset **Very low / performance**, motion blur off, V-sync off.
 - Frame limiter **60 FPS**. This caps GPU heat and leaves compute for training.
 - Keep the default chase camera; do not switch cameras during a run.
-- Hide opponents' ghosts and other overlays in solo play.
-- Keep the game window visible (not minimised) while training.
+- Turn **ghosts off**, your own personal-best ghost included. The AI learns
+  from the screen and a second car confuses it.
+- Keep the game window open (not minimised) while training. It can be behind
+  other windows.
+- **Settings > Controls** (gamepad): bind **Give up** to the **View/Back**
+  button (the small button left of the Xbox logo with two squares on it, not
+  the red B). The AI restarts runs with it; that is what
+  `--set env.restart_button=BACK` refers to.
 
 ## 8. Laptop power and heat
 
@@ -102,5 +109,15 @@ the game should be light and consistent:
 tmai doctor
 ```
 
-Paste the output in the project thread. Every line should be `[ ok ]` except
-the telemetry plugin, which is a `[warn]` until phase 1.
+Every line should be `[ ok ]`. If one is `[FAIL]` or `[warn]`, paste the
+output in the project thread.
+
+## 10. First training run
+
+1. Install the plugins: `tmai install-plugin`, then in game
+   **F3 > Developer > (Re)load plugin > TMAI Telemetry** and **TMAI Ghost**
+   (or restart the game).
+2. Optional first check that the game connection works:
+   [PHASE1_TESTING.md](PHASE1_TESTING.md).
+3. Record 3 demo laps of your map: [PHASE2_TESTING.md](PHASE2_TESTING.md).
+4. Train, watch and stop: [EVERYDAY_USE.md](EVERYDAY_USE.md).

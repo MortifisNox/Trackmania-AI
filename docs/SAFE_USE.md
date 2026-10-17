@@ -61,7 +61,7 @@ memory or speed.
    ([Openplanet plugin terms](https://openplanet.dev/docs/plugin-tos)).
    *(Sourced.)*
 
-7. **Keep our telemetry plugin private.** Openplanet's plugin terms do not
+7. **Keep our plugins private** (TMAI Telemetry and TMAI Ghost). Openplanet's plugin terms do not
    allow mostly AI-generated plugins on openplanet.dev
    ([plugin terms](https://openplanet.dev/docs/plugin-tos)), and the plugin is
    written with AI help. It runs locally in Developer mode and never gets
@@ -83,6 +83,6 @@ memory or speed.
   hosts).
 - The telemetry socket is localhost only.
 - No code path talks to Nadeo or Ubisoft services.
-- Our telemetry plugin is unsigned, and Openplanet only loads unsigned plugins
+- Our plugins are unsigned, and Openplanet only loads unsigned plugins
   in Developer mode, which implies School mode. So if `tmai telemetry` shows
   data, School mode is on and records cannot reach official leaderboards.
