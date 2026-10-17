@@ -22,6 +22,9 @@ env:
   # which restarts maps without checkpoints (like tmrl-test). For maps with
   # checkpoints, bind "Give up" to a free button in game and set it here.
   restart_button: B
+  # After a personal best the game shows its end-of-race menu, which ignores
+  # the restart button. This button picks the menu's default choice, Improve.
+  menu_button: A
   # window: capture the game window directly (works behind other windows).
   # screen: capture the screen area (game must be visible and on top).
   capture_backend: window

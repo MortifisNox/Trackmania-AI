@@ -28,9 +28,10 @@ class Gamepad:
             import vgamepad
 
             pad = vgamepad.VX360Gamepad()
-            self._restart = getattr(vgamepad.XUSB_BUTTON, BUTTONS[restart_button])
+            self._button = lambda name: getattr(vgamepad.XUSB_BUTTON, BUTTONS[name])
         else:
-            self._restart = restart_button
+            self._button = lambda name: name
+        self._restart = self._button(restart_button)
         self.pad = pad
 
     def act(self, action) -> tuple[float, float, float]:
@@ -46,9 +47,18 @@ class Gamepad:
         self.pad.update()
 
     def press_restart(self, hold_s: float = 0.1) -> None:
+        self._press(self._restart, hold_s)
+
+    def press(self, name: str, hold_s: float = 0.1) -> None:
+        """Tap one of BUTTONS, e.g. A to confirm a menu."""
+        if name not in BUTTONS:
+            raise ValueError(f"unknown button {name!r}; pick one of {sorted(BUTTONS)}")
+        self._press(self._button(name), hold_s)
+
+    def _press(self, button, hold_s: float) -> None:
         self.release()
-        self.pad.press_button(button=self._restart)
+        self.pad.press_button(button=button)
         self.pad.update()
         time.sleep(hold_s)
-        self.pad.release_button(button=self._restart)
+        self.pad.release_button(button=button)
         self.pad.update()

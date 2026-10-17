@@ -166,3 +166,36 @@ def test_restart_that_respawns_at_a_checkpoint_is_refused():
     with pytest.raises(CheckpointRespawn):
         game.restart()
     assert interface.CheckpointRespawn is CheckpointRespawn
+
+
+def test_restart_gets_past_the_end_of_race_menu():
+    """After a personal best the game's end-of-race menu ignores the restart
+    button; restart() taps the menu button (A, Improve) to start the run again."""
+    from tmai.game import protocol
+    from tmai.game.interface import GameInterface
+
+    playing = protocol.FLAG_PLAYER | protocol.FLAG_PLAYING
+    menu = protocol.FLAG_PLAYER | protocol.FLAG_FINISHED
+    pressed = []
+
+    class Tel:
+        seq = 0
+
+        def wait(self, timeout, after_seq=None):
+            self.seq += 1
+            if "A" not in pressed:   # the menu stays up until A is pressed
+                return protocol.decode(protocol.encode(seq=self.seq, flags=menu, race_time_ms=20550, pos=(1645.0, 0.0, 0.0)))
+            self.clock = getattr(self, "clock", -1600) + 100   # countdown, then the run
+            return protocol.decode(protocol.encode(seq=self.seq, flags=playing, race_time_ms=self.clock, pos=(0.0, 0.0, 0.0)))
+
+    class Pad:
+        def press_restart(self):
+            pressed.append("BACK")
+
+        def press(self, name):
+            pressed.append(name)
+
+    game = GameInterface.__new__(GameInterface)
+    game.telemetry, game.pad, game.restart_button, game.menu_button = Tel(), Pad(), "BACK", "A"
+    tel = game.restart(timeout=5.0, menu_after_s=0.0)
+    assert pressed == ["BACK", "A"] and tel.race_time_ms == 0
