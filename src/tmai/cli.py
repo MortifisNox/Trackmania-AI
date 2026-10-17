@@ -20,7 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="check this machine is ready to train")
     sub.add_parser("config", help="print the resolved configuration")
-    sub.add_parser("install-plugin", help="copy the TMAI Telemetry plugin into Openplanet")
+    sub.add_parser("install-plugin", help="copy the TMAI Telemetry and TMAI Ghost plugins into Openplanet")
     p = sub.add_parser("get-map", help="download training maps into My Maps")
     p.add_argument("names", nargs="*", default=["tmrl-test"])
     p = sub.add_parser("telemetry", help="print live telemetry from the plugin")
@@ -36,6 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("train", help="let the agent learn run.track (Ctrl+C stops and saves)")
     p.add_argument("--minutes", type=float, default=None, help="stop after this long (default: until Ctrl+C)")
     p.add_argument("--fresh", action="store_true", help="ignore the run's last checkpoint and start over")
+    p = sub.add_parser("stop", help="ask the running training of run.name to stop and save")
+    p.add_argument("--reason", default="tmai stop")
+    sub.add_parser("report", help="rebuild run.name's run report from its saved files")
     p = sub.add_parser("drive-test", help="drive full throttle at 20 Hz and report timing")
     p.add_argument("--episodes", type=int, default=3)
     return parser
@@ -65,11 +68,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if any(c.status == FAIL for c in checks) else 0
 
     if args.command == "install-plugin":
-        from tmai.game.plugin import install_plugin
+        from tmai.game.plugin import GHOST_PLUGIN_SRC, PLUGIN_SRC, install_plugin
 
-        dest = install_plugin(_openplanet_dir())
-        print(f"installed to {dest}")
-        print("In game: F3 > Developer > (Re)load plugin > TMAI Telemetry, or restart the game.")
+        for src in (PLUGIN_SRC, GHOST_PLUGIN_SRC):
+            print(f"installed to {install_plugin(_openplanet_dir(), src)}")
+        print("In game: F3 > Developer > (Re)load plugin > TMAI Telemetry and TMAI Ghost, or restart the game.")
         return 0
 
     if args.command == "get-map":
@@ -87,6 +90,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build-reference":
             return commands.build_reference(cfg)
         return commands.progress_test(cfg, args.seconds)
+
+    if args.command in ("stop", "report"):
+        run_dir = Path(cfg["run"]["output_dir"]) / cfg["run"]["name"]
+        if args.command == "stop":
+            from tmai.run.stop import read_status, request_stop
+
+            request_stop(run_dir, args.reason, source="cli")
+            print(f"stop requested; the run is {read_status(run_dir).get('state', 'unknown')}")
+            return 0
+        from tmai.run.ghost import preserve_best_replay
+        from tmai.run.report import build_report
+
+        replay = preserve_best_replay(run_dir, cfg["run"]["track"])
+        path = build_report(run_dir, Path(cfg["run"]["output_dir"]) / "tracks" / cfg["run"]["track"],
+                            {"track": cfg["run"]["track"], "replay": replay})
+        print(f"report: {path}")
+        return 0
 
     if args.command == "train":
         from tmai.rl.train import Trainer

@@ -105,6 +105,7 @@ for history:
 On stop: best lap and splits per track, split comparison against your demo
 lap, total steps and hours, reward/loss/Q curves with a stability summary
 (rolling variance), exported as HTML in `runs/<name>/report/`. The best lap is
-kept as a game replay: Trackmania autosaves replays of personal bests in local
-play, and the report links it for viewing in the replay editor *(the exact
-mechanism, autosave folder versus a plugin call, gets verified in phase 6)*.
+kept as a game replay, saved by our TMAI Ghost Openplanet plugin through the
+game's `DataFileMgr.Replay_Save`, and watched in the Replay editor or raced with
+Play > Local > Against replay. Details and what is verified:
+[RUN_LIFECYCLE.md](RUN_LIFECYCLE.md).
