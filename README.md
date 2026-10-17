@@ -13,12 +13,17 @@ the game on the same machine.
 
 ## Status
 
-Phase 0 (setup). Available commands:
+Phase 1 (game connection) in testing: [docs/PHASE1_TESTING.md](docs/PHASE1_TESTING.md).
 
 ```powershell
-tmai doctor   # check drivers, CUDA, RAM, Openplanet, disk
-tmai config   # print the resolved configuration
-tmai --set train.batch_size=128 config   # override any value
+tmai doctor           # check drivers, CUDA, RAM, Openplanet, disk
+tmai install-plugin   # copy the TMAI Telemetry plugin into Openplanet
+tmai get-map          # download the tmrl-test map into My Maps
+tmai telemetry        # print live telemetry
+tmai gamepad-test     # steer, brake, restart through the virtual pad
+tmai capture-test     # capture rate + image of what the agent sees
+tmai drive-test       # full-throttle loop at 20 Hz with timing report
+tmai --set env.restart_button=BACK config   # override any value
 ```
 
 ## Development
