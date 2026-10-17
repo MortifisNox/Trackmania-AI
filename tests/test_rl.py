@@ -83,6 +83,7 @@ def test_demo_loads_with_rewards(tmp_path):
     from tmai.rl.demos import load_demo
 
     cfg = small_cfg(tmp_path)
+    cfg["env"]["step_hz"] = 20   # the rate the fake demo was recorded at (50 ms steps)
     store = make_track(tmp_path, cfg)
     buf = ReplayBuffer(100, 64, 4)
     tracker = ProgressTracker(ReferenceLine.load(store.reference), cfg)

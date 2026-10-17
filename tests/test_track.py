@@ -180,3 +180,22 @@ def test_reference_times_roundtrip_and_pace_reward(tmp_path):
     plain = ProgressTracker(ReferenceLine.from_positions(pts, 1.0), cfg)
     plain.reset(tel(pos=(0.0, 0.0, 0.0)))
     assert "pace" not in plain.step(tel(pos=(2.0, 0.0, 0.0), race_time_ms=100)).terms
+
+
+def test_stalls_and_late_starts_cost_the_time_they_lose():
+    xs = np.linspace(0, 100, 101)
+    ref = ReferenceLine.from_positions(np.stack([xs, 0 * xs, 0 * xs], 1), 1.0, xs / 10.0)   # 10 m/s
+    cfg = load_config(None, ["reward.pace_per_s=10", "reward.time_penalty=0.01", "env.step_hz=20"])
+    tr = ProgressTracker(ref, cfg)
+    tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=0))
+    normal = tr.step(tel(pos=(0.5, 0.0, 0.0), race_time_ms=50))        # on the reference pace
+    assert normal.terms["time"] == pytest.approx(-0.01) and "pace" not in normal.terms
+    stall = tr.step(tel(pos=(1.0, 0.0, 0.0), race_time_ms=1050))       # 1 s on the clock, one step driven
+    assert stall.terms["pace"] == pytest.approx(10 * (0.05 - 1.0))     # the whole 0.95 s lost, not capped at 0.2
+    assert stall.terms["time"] == pytest.approx(-0.01 * 20)
+    tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=1000))              # clock already at 1 s when driving starts
+    late = tr.step(tel(pos=(0.5, 0.0, 0.0), race_time_ms=1050))
+    assert late.terms["pace"] == pytest.approx(10 * (0.05 - 1.05))
+    tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=-1500))             # countdown frames (demos) cost nothing extra
+    countdown = tr.step(tel(pos=(0.0, 0.0, 0.0), race_time_ms=-1450))
+    assert "pace" not in countdown.terms and countdown.terms["time"] == pytest.approx(-0.01)
