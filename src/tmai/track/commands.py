@@ -73,14 +73,15 @@ def progress_test(cfg: dict, seconds: float) -> int:
                 total = 0.0
                 print("-- restart --")
             prev_time = t.race_time_ms
+            ended = tracker.ended
             info = tracker.step(t)
             total += info.reward
             now = time.monotonic()
             if info.split_delta_ms is not None:
                 print(f"   checkpoint {t.cp_count}: {info.split_delta_ms / 1000:+.3f}s vs best")
-            if info.done:
+            if info.done and not ended:
                 print(f"   episode end: {info.done} (total reward {total:.1f})")
-            if now - last_print >= 0.5:
+            if now - last_print >= 0.5 and not ended:
                 ahead = info.lookahead[:3]
                 print(f"time {t.race_time_ms / 1000:6.2f}s  progress {info.progress * 100:5.1f}%  "
                       f"({info.progress_m:6.0f}/{ref.length:.0f} m)  off-line {info.lateral_m:4.1f} m  "

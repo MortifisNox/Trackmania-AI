@@ -120,6 +120,10 @@ def test_split_bonus_and_finish():
     assert info.split_delta_ms == -1000 and info.terms["split"] == pytest.approx(1.0)
     fin = tr.step(tel(pos=(2.0, 0.0, 0.0), flags=protocol.FLAG_PLAYER | protocol.FLAG_FINISHED))
     assert fin.done == "finished" and fin.terms["finish"] == cfg["reward"]["finish_bonus"]
+    after = tr.step(tel(pos=(40.0, 30.0, 0.0), flags=protocol.FLAG_PLAYER | protocol.FLAG_FINISHED))
+    assert after.done == "finished" and after.reward == 0.0
+    tr.reset(tel(pos=(0.0, 0.0, 0.0)))
+    assert tr.step(tel(pos=(1.0, 0.0, 0.0))).done is None
 
 
 def test_track_store(tmp_path):

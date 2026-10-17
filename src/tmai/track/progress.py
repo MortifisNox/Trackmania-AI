@@ -37,14 +37,28 @@ class ProgressTracker:
         self._s = 0.0
         self._max_s = 0.0
         self._prev_speed = 0.0
+        self._done: str | None = None
 
     def reset(self, tel: Telemetry) -> None:
         self._idx, self._s, _ = self.ref.project(tel.pos)
         self._max_s = self._s
         self._prev_speed = tel.speed_kmh
+        self._done = None
         self.splits.reset()
 
+    @property
+    def ended(self) -> str | None:
+        return self._done
+
     def step(self, tel: Telemetry) -> StepInfo:
+        if self._done:
+            # The attempt already ended; the game keeps sending frames until the
+            # restart (the finish screen, the car rolling on), which earn nothing.
+            return StepInfo(reward=0.0, progress_m=self._s,
+                            progress=self._s / self.ref.length if self.ref.length else 0.0,
+                            lateral_m=0.0, delta_m=0.0,
+                            lookahead=np.zeros(3 * self.env["lookahead_points"]),
+                            done=self._done)
         idx, s, lateral = self.ref.project(tel.pos, hint=self._idx)
         delta = s - self._s
         if abs(delta) > self.track["max_progress_jump_m"]:
@@ -75,6 +89,7 @@ class ProgressTracker:
         elif self.track["off_track_m"] > 0 and lateral > self.track["off_track_m"]:
             done = "off_track"
 
+        self._done = done
         lookahead = self.ref.lookahead(tel.pos, tel.dir, tel.up, s,
                                        self.env["lookahead_points"], self.env["lookahead_spacing_m"])
         return StepInfo(
