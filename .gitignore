@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Training outputs (large, machine-specific)
+runs/
+checkpoints/
+replay/
+reports/
+*.pt
+*.npy
