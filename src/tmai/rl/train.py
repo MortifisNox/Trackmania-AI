@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from tmai.game.interface import CheckpointRespawn
 from tmai.rl.demos import add_lap, load_demo
 from tmai.rl.env import TERMINAL, TMEnv
 from tmai.rl.replay import ReplayBuffer, concat_batches
