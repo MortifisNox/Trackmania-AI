@@ -65,7 +65,8 @@ def add_lap(buffer: ReplayBuffer, tracker: ProgressTracker, frames, tels: list[T
     total, added = 0.0, 0
     for i in range(len(tels) - 1):
         info = tracker.step(tels[i + 1])
-        buffer.add(frames[i], state, actions[i], info.reward, terminal=info.done == "finished")
+        buffer.add(frames[i], state, actions[i], info.reward - info.terms.get("pace", 0.0),
+                   terminal=info.done == "finished", pace=info.pace_inputs)
         total += info.reward
         added += 1
         state = state_vector(tels[i + 1], info.lookahead, actions[i])

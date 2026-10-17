@@ -22,6 +22,11 @@ class ReplayBuffer:
         self.reward = np.zeros(capacity, dtype=np.float32)
         self.terminal = np.zeros(capacity, dtype=np.float32)
         self.has_next = np.zeros(capacity, dtype=bool)
+        # Pace-term inputs (lap fraction before and after, race seconds); NaN where
+        # the transition has none, and `reward` then already holds everything.
+        self.pace_u0 = np.full(capacity, np.nan, dtype=np.float32)
+        self.pace_u1 = np.full(capacity, np.nan, dtype=np.float32)
+        self.pace_dt = np.full(capacity, np.nan, dtype=np.float32)
         self.episode = np.full(capacity, -1, dtype=np.int64)
         self.pos = 0
         self.size = 0
@@ -34,9 +39,12 @@ class ReplayBuffer:
     def start_episode(self) -> None:
         self._episode += 1
 
-    def add(self, frame, state, action=None, reward: float = 0.0, terminal: bool = False) -> None:
+    def add(self, frame, state, action=None, reward: float = 0.0, terminal: bool = False,
+            pace: tuple[float, float, float] | None = None) -> None:
         """Add the observation (frame, state) and, unless this is the episode's
-        last observation (action None), the transition that starts from it."""
+        last observation (action None), the transition that starts from it.
+        With `pace`, `reward` leaves out the pace term, which sampling scores
+        from these inputs against the baseline of the day."""
         i = self.pos
         self.frames[i] = frame
         self.state[i] = state
@@ -45,6 +53,7 @@ class ReplayBuffer:
             self.action[i] = action
             self.reward[i] = reward
             self.terminal[i] = float(terminal)
+            self.pace_u0[i], self.pace_u1[i], self.pace_dt[i] = pace if pace is not None else (np.nan,) * 3
             self.transitions += 1
         self.episode[i] = self._episode
         self.pos = (i + 1) % self.capacity
@@ -68,7 +77,20 @@ class ReplayBuffer:
             out[:, k] = self.frames[cur]
         return out
 
-    def sample(self, n: int, rng: np.random.Generator, n_step: int = 1, gamma: float = 0.99) -> dict:
+    def rewards(self, idx: np.ndarray, pace_fn=None) -> np.ndarray:
+        """Rewards of the transitions at idx, with the pace term scored by
+        pace_fn(u0, u1, dt) where the transition stored its inputs."""
+        r = self.reward[idx].astype(np.float32)
+        if pace_fn is not None:
+            has = ~np.isnan(self.pace_dt[idx])
+            if has.any():
+                j = idx[has]
+                r[has] += pace_fn(self.pace_u0[j].astype(np.float64), self.pace_u1[j].astype(np.float64),
+                                  self.pace_dt[j].astype(np.float64))
+        return r
+
+    def sample(self, n: int, rng: np.random.Generator, n_step: int = 1, gamma: float = 0.99,
+               pace_fn=None) -> dict:
         """A batch of n-step transitions. `reward` is the discounted sum of up to
         n_step rewards and `discount` is what the bootstrapped value is scaled by:
         gamma**k after k steps, or 0 when the episode ended in a terminal state.
@@ -89,7 +111,7 @@ class ReplayBuffer:
         disc = np.ones(n, dtype=np.float32)
         cur, active = idx.copy(), np.ones(n, dtype=bool)
         for k in range(n_step):
-            ret[active] += disc[active] * self.reward[cur[active]]
+            ret[active] += disc[active] * self.rewards(cur[active], pace_fn)
             disc[active] *= gamma
             ended = active & (self.terminal[cur] > 0)
             disc[ended] = 0.0

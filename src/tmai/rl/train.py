@@ -16,6 +16,7 @@ from tmai.rl.demos import add_lap, load_demo
 from tmai.rl.env import TERMINAL, TMEnv
 from tmai.rl.replay import ReplayBuffer, concat_batches
 from tmai.rl.sac import Policy, SACAgent
+from tmai.track.baseline import PaceBaseline
 from tmai.track.progress import ProgressTracker
 from tmai.track.reference import ReferenceLine
 from tmai.track.splits import SplitTracker
@@ -63,7 +64,9 @@ class Trainer:
 
             build_reference(cfg)
             ref = ReferenceLine.load(self.store.reference)
-        self.tracker = ProgressTracker(ref, cfg, SplitTracker.load(self.store.splits))
+        rw = cfg["reward"]
+        self.baseline = PaceBaseline(ref, rw["pace_baseline_laps"], rw["pace_baseline_min_laps"])
+        self.tracker = ProgressTracker(ref, cfg, SplitTracker.load(self.store.splits), self.baseline)
 
         self.run_dir = Path(run["output_dir"]) / run["name"]
         self.ckpt = self.run_dir / "checkpoints" / "latest.pt"
@@ -113,7 +116,8 @@ class Trainer:
             return None
         env = self.cfg["env"]
         buf = ReplayBuffer(sum(sizes) + len(sizes) + 1, env["frame_size"], env["frame_stack"])
-        demo_tracker = ProgressTracker(self.tracker.ref, self.cfg, SplitTracker(self.tracker.splits.best))
+        demo_tracker = ProgressTracker(self.tracker.ref, self.cfg, SplitTracker(self.tracker.splits.best),
+                                       self.baseline)
         for f in files:
             n, total = load_demo(f, buf, demo_tracker)
             if not quiet:
@@ -188,15 +192,19 @@ class Trainer:
         steps = self.online.transitions - self.warmup
         return max(0, steps * self.utd)
 
+    def pace_reward(self, u0, u1, dt):
+        """The pace term of stored transitions, against today's baseline."""
+        return self.cfg["reward"]["pace_per_s"] * self.baseline.pace(u0, u1, dt)
+
     def sample(self) -> dict:
         demo, demo_n = self.demo, self.demo_n
         if demo is None:
             demo_n = 0
         n_online = self.batch_size - demo_n
         with self.replay_lock:
-            batch = self.online.sample(n_online, self.rng, self.n_step, self.gamma)
+            batch = self.online.sample(n_online, self.rng, self.n_step, self.gamma, self.pace_reward)
         if demo_n:
-            batch = concat_batches(batch, demo.sample(demo_n, self.rng, self.n_step, self.gamma))
+            batch = concat_batches(batch, demo.sample(demo_n, self.rng, self.n_step, self.gamma, self.pace_reward))
         return batch
 
     def learn_once(self) -> bool:
@@ -232,6 +240,7 @@ class Trainer:
     def run_episode(self, env: TMEnv, hooks=None, deterministic: bool = False) -> dict:
         """One attempt. deterministic=True drives a test lap without exploration
         noise (its transitions still go to the replay buffer)."""
+        self.tracker.best_lap_ms = self.best_ms   # for the personal-best bonus at the finish
         obs = env.reset()
         frames, tels, actions = [obs.frame], [env.last_tel], []
         trace = [(env.last_tel.pos, env.last_tel.race_time_ms, env.last_tel.cp_count, env.last_tel.last_cp_time_ms)]
@@ -255,7 +264,9 @@ class Trainer:
                     reason = "reset"   # dashboard: reset track, or pause mid-lap
                     env.game.pad.release()
             with self.replay_lock:
-                self.online.add(obs.frame, obs.state, action, reward, terminal=reason in TERMINAL)
+                # The pace term is left out and scored again at sampling time.
+                self.online.add(obs.frame, obs.state, action, reward - info.terms.get("pace", 0.0),
+                                terminal=reason in TERMINAL, pace=info.pace_inputs)
             total += reward
             steps += 1
             obs = nxt
@@ -276,6 +287,14 @@ class Trainer:
         if lap_ms is not None:
             ep["lap"] = {"frames": frames, "tels": tels, "actions": actions}
         return ep
+
+    def add_baseline_lap(self, ep: dict) -> None:
+        """Finished laps join the pace baseline (the average of recent laps)."""
+        if ep["lap_ms"] is None:
+            return
+        pos = np.array([p for p, *_ in ep["trace"]], dtype=np.float64)
+        times = np.array([t for _, t, *_ in ep["trace"]], dtype=np.float64) / 1000.0
+        self.baseline.add_lap(pos, times)
 
     def is_eval_episode(self) -> bool:
         every = self.cfg["train"]["eval_every"]
@@ -326,6 +345,7 @@ class Trainer:
         new.save(self.store.reference)
         SplitTracker(cps).save(self.store.splits)
         self.tracker.ref = new
+        self.baseline.set_ref(new)
         self.tracker.splits.best = cps
         self.log(f"new reference line: {ep['lap_ms'] / 1000:.3f}s lap replaces {ref_ms / 1000:.3f}s")
         self.demo = self._load_demos()   # demo rewards follow the new line
@@ -351,6 +371,8 @@ class Trainer:
             note += "  (test lap)"
         if ep.get("stall_s", 0.0) >= STALL_WARN_S:
             note += f"  STALL {ep['stall_s']:.2f}s (race clock ran without a driving step)"
+        if self.baseline.from_recent_laps:
+            note += f"  baseline {self.baseline.lap_time_s:.2f}s"
         learning = "warming up" if self.online.transitions < self.warmup else f"{self.agent.updates} updates"
         self.log(f"ep {self.episodes:5d}  {ep['end']:9s}  {ep['race_time_s']:6.2f}s  "
                  f"progress {ep['progress'] * 100:5.1f}%  reward {ep['reward']:7.1f}  {learning}  "
@@ -408,6 +430,7 @@ class Trainer:
                     row = self._log_episode(ep, writer, f)
                     if ep["deterministic"]:
                         self.record_eval(ep, row)
+                    self.add_baseline_lap(ep)
                     self.keep_best_lap(ep)
                     self.maybe_adopt_lap(ep)
                     hooks.on_episode(row)
