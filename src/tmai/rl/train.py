@@ -398,6 +398,9 @@ class Trainer:
                         break
                     try:
                         ep = self.run_episode(env, hooks, deterministic=self.is_eval_episode())
+                    except CheckpointRespawn as exc:
+                        self.log(f"stopping: {exc}")
+                        break
                     except TimeoutError as exc:
                         self.log(f"game not responding ({exc}); retrying")
                         time.sleep(2.0)

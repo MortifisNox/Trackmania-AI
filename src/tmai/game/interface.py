@@ -9,6 +9,10 @@ from tmai.game.protocol import Telemetry
 from tmai.game.telemetry import TelemetryClient
 
 
+class CheckpointRespawn(RuntimeError):
+    """The restart button respawned at a checkpoint instead of restarting the run."""
+
+
 class GameInterface:
     def __init__(self, cfg: dict, capture: bool = True):
         env = cfg["env"]
@@ -43,6 +47,14 @@ class GameInterface:
                 restarted = restart_detected(before, prev, tel, time.monotonic() - pressed)
                 prev = tel
                 continue
+            if tel.race_time_ms > 3000:
+                # The clock kept running: the button respawned at a checkpoint
+                # instead of restarting the run. Episodes must start from the line.
+                raise CheckpointRespawn(
+                    f"{self.restart_button} respawned at a checkpoint (race clock still at "
+                    f"{tel.race_time_ms / 1000:.1f}s). In game, bind Give up to a free gamepad button "
+                    "(Settings > Controls) and pass it, e.g. --set env.restart_button=BACK"
+                )
             if tel.race_time_ms >= 0:
                 return tel
         raise TimeoutError(
