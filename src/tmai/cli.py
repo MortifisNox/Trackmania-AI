@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("gamepad-test", help="steer, brake and restart through the virtual pad")
     sub.add_parser("capture-test", help="measure screen capture and save what the agent sees")
     sub.add_parser("focus-test", help="check driving and capture work while the game is not focused")
+    p = sub.add_parser("record-demo", help="record your laps of run.track and build its reference line")
+    p.add_argument("--laps", type=int, default=3)
+    sub.add_parser("build-reference", help="rebuild run.track's reference line from its fastest demo")
+    p = sub.add_parser("progress-test", help="drive yourself and watch progress, reward and splits")
+    p.add_argument("--seconds", type=float, default=60.0)
     p = sub.add_parser("drive-test", help="drive full throttle at 20 Hz and report timing")
     p.add_argument("--episodes", type=int, default=3)
     return parser
@@ -70,6 +75,15 @@ def main(argv: list[str] | None = None) -> int:
         for path in install_maps(args.names, my_maps_dir()):
             print(f"saved {path}")
         return 0
+
+    if args.command in ("record-demo", "build-reference", "progress-test"):
+        from tmai.track import commands
+
+        if args.command == "record-demo":
+            return commands.record_demo(cfg, args.laps)
+        if args.command == "build-reference":
+            return commands.build_reference(cfg)
+        return commands.progress_test(cfg, args.seconds)
 
     from tmai.game import checks
 
