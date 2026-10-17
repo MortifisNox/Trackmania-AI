@@ -15,3 +15,6 @@ replay/
 reports/
 *.pt
 *.npy
+
+# Personal launch settings (copied from tmai_settings.example.json)
+tmai_settings.json
