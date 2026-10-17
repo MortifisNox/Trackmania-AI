@@ -6,6 +6,7 @@ from tmai.game import maps, plugin, protocol
 from tmai.game.clock import RealtimeClock
 from tmai.game.episode import EpisodeMonitor
 from tmai.game.gamepad import Gamepad, clip_action
+from tmai.game.input_guard import Foreground, InputGuard, blocked_reason
 
 
 class FakeTime:
@@ -65,6 +66,47 @@ def test_gamepad_clips_and_maps_axes():
     assert clip_action((0.3, 0.2, 0.9)) == (0.3, 0.2, 0.9)
     with pytest.raises(ValueError):
         Gamepad("Z", pad=pad)
+
+
+def test_input_guard_spots_windows_ui():
+    alt_tab = Foreground("MultitaskingViewFrame", "explorer.exe", set())
+    game = Foreground("ManiaPlanet", "Trackmania.exe", set())
+    shell = Foreground("ConsoleWindowClass", "WindowsTerminal.exe", set())
+    assert blocked_reason("shell", alt_tab) == "Alt+Tab / Task View is open"
+    assert blocked_reason("shell", Foreground("Windows.UI.Core.CoreWindow", "StartMenuExperienceHost.exe", set()))
+    assert blocked_reason("shell", Foreground("x", "GameBar.exe", set())) == "Xbox Game Bar is open"
+    assert blocked_reason("shell", game) is None
+    assert blocked_reason("shell", shell) is None          # game may train in the background
+    assert blocked_reason("shell", Foreground("ManiaPlanet", "Trackmania.exe", {0x12})) == "Alt is held"
+    assert blocked_reason("shell", None) == "no window is in front"
+    assert blocked_reason("game", shell) == "the game window is not in front"
+    assert blocked_reason("game", game) is None
+    assert blocked_reason("off", alt_tab) is None
+    with pytest.raises(ValueError):
+        InputGuard("sometimes")
+
+
+def test_gamepad_goes_neutral_while_windows_ui_is_in_front():
+    front = {"fg": Foreground("ManiaPlanet", "Trackmania.exe", set())}
+    pad = FakePad()
+    gp = Gamepad("B", pad=pad, guard=InputGuard("shell", probe=lambda: front["fg"]), poll_s=60)
+    assert gp.act((0.5, 1.0, 0.0)) == (0.5, 1.0, 0.0)
+    assert gp.take_interruption() is None
+    front["fg"] = Foreground("MultitaskingViewFrame", "explorer.exe", set())
+    pad.calls.clear()
+    assert gp.act((-1.0, 1.0, 0.0)) == (0.0, 0.0, 0.0)
+    assert gp.act((1.0, 1.0, 0.0)) == (0.0, 0.0, 0.0)
+    assert [c[0] for c in pad.calls] == ["reset", "update"]   # neutral once, no steering
+    with pytest.raises(TimeoutError, match="Alt\\+Tab"):
+        gp.press_restart(wait_s=0.0)
+    assert not any(c[0] == "press_button" for c in pad.calls)  # B is Back in menus
+    front["fg"] = Foreground("ManiaPlanet", "Trackmania.exe", set())
+    assert gp.take_interruption() == "Alt+Tab / Task View is open"
+    assert gp.take_interruption() is None
+    assert gp.act((0.2, 0.0, 0.0)) == (0.2, 0.0, 0.0)
+    gp.press_restart(hold_s=0.0)
+    assert ("press_button", {"button": "B"}) in pad.calls
+    gp.close()
 
 
 def test_install_plugin_copies_folder(tmp_path):

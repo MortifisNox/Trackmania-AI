@@ -31,6 +31,7 @@ class TMEnv:
         env = cfg["env"]
         self.game, self.tracker = game, tracker
         self.stack = env["frame_stack"]
+        self.lidar = bool(env["lidar_beams"])
         self.clock = clock or RealtimeClock(env["step_hz"])
         self.monitor = EpisodeMonitor(env["episode_timeout_s"], env["stuck_timeout_s"], env["stuck_speed_kmh"])
         self._frames: deque = deque(maxlen=self.stack)
@@ -40,12 +41,21 @@ class TMEnv:
 
     def _obs(self, frame, tel, lookahead) -> Obs:
         self._frames.append(frame)
-        state = state_vector(tel, lookahead, self._prev_action)
+        state = state_vector(tel, lookahead, self._prev_action, self._beams())
         return Obs(np.stack(self._frames), state, frame)
+
+    def _beams(self):
+        if not self.lidar:
+            return None
+        beams = getattr(self.game, "beams", None)
+        if beams is None:
+            raise RuntimeError("env.lidar_beams is on but the game gave no beam readings")
+        return beams
 
     def reset(self) -> Obs:
         self.game.pad.release()
         self.game.restart()
+        self.game.take_input_interruption()
         self.monitor.reset()
         self.clock.reset()
         self._prev_action = np.array([0.0, -1.0, -1.0], dtype=np.float32)   # no input
@@ -65,7 +75,10 @@ class TMEnv:
         frame, tel = self.game.observe()
         self.last_tel = tel
         info = self.tracker.step(tel)
-        reason = info.done or self.monitor.check(tel)
+        # Actions held back while Windows UI was in front never reached the
+        # car, so end the attempt there (a cut-off, not an outcome).
+        blocked = self.game.take_input_interruption()
+        reason = info.done or self.monitor.check(tel) or ("blocked" if blocked else None)
         self._prev_action = action
         obs = self._obs(frame, tel, info.lookahead)
         if reason:

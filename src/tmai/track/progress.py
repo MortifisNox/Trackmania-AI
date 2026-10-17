@@ -37,12 +37,14 @@ class ProgressTracker:
         self._s = 0.0
         self._max_s = 0.0
         self._prev_speed = 0.0
+        self._prev_time_ms = 0
         self._done: str | None = None
 
     def reset(self, tel: Telemetry) -> None:
         self._idx, self._s, _ = self.ref.project(tel.pos)
         self._max_s = self._s
         self._prev_speed = tel.speed_kmh
+        self._prev_time_ms = tel.race_time_ms
         self._done = None
         self.splits.reset()
 
@@ -68,6 +70,13 @@ class ProgressTracker:
         delta = s - self._s
         if abs(delta) > self.track["max_progress_jump_m"]:
             delta = 0.0  # teleport (respawn) or a shortcut across the line: no credit
+        pace = 0.0
+        if delta and self.ref.times is not None and self.rw["pace_per_s"]:
+            # Seconds gained on the reference lap over this stretch of track.
+            ref_dt = self.ref.time_at(s) - self.ref.time_at(self._s)
+            dt = (tel.race_time_ms - self._prev_time_ms) / 1000.0
+            pace = float(np.clip(ref_dt - dt, -0.2, 0.2))
+        self._prev_time_ms = tel.race_time_ms
         self._idx, self._s = idx, s
         self._max_s = max(self._max_s, s)
 
@@ -75,6 +84,8 @@ class ProgressTracker:
             "progress": self.rw["progress_per_m"] * delta,
             "time": -self.rw["time_penalty"],
         }
+        if pace:
+            terms["pace"] = self.rw["pace_per_s"] * pace
         crashed = self._prev_speed - tel.speed_kmh > self.track["crash_speed_drop_kmh"]
         self._prev_speed = tel.speed_kmh
         if crashed:

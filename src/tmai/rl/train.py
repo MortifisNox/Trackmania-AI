@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from tmai.budget import state_dim
 from tmai.rl.demos import load_demo
 from tmai.rl.env import TERMINAL, TMEnv
 from tmai.rl.replay import ReplayBuffer, concat_batches
@@ -25,6 +26,10 @@ EPISODE_FIELDS = ["episode", "wall_time", "steps", "end", "race_time_s", "progre
                   "env_steps", "updates", "critic_loss", "actor_loss", "alpha", "q", "entropy",
                   "late_p99_ms"]
 SYNC_EVERY = 20   # learner updates between refreshes of the driving policy
+
+
+class IncompatibleCheckpoint(RuntimeError):
+    """The run's checkpoint was trained with other inputs (camera or lidar)."""
 
 
 def pick_device() -> torch.device:
@@ -47,6 +52,12 @@ class Trainer:
         if not self.store.reference.exists():
             raise FileNotFoundError(f"no reference line for {self.store.name!r}; run tmai record-demo first")
         ref = ReferenceLine.load(self.store.reference)
+        if ref.times is None and self.store.demo_files():
+            # Lines built before pace rewards existed: rebuild with lap timing.
+            from tmai.track.commands import build_reference
+
+            build_reference(cfg)
+            ref = ReferenceLine.load(self.store.reference)
         self.tracker = ProgressTracker(ref, cfg, SplitTracker.load(self.store.splits))
 
         self.run_dir = Path(run["output_dir"]) / run["name"]
@@ -54,7 +65,7 @@ class Trainer:
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.demo = self._load_demos()
-        self.online = ReplayBuffer(cfg["replay"]["capacity"], env["frame_size"], env["frame_stack"])
+        self.online = ReplayBuffer(cfg["replay"]["capacity"], env["frame_size"], env["frame_stack"], state_dim(env))
         self.agent = SACAgent(cfg, self.device)
         self.policy = Policy(cfg, self.device)
         self.episodes, self.best_ms, self.env_steps_before = 0, None, 0
@@ -85,26 +96,39 @@ class Trainer:
             self.log("no demo laps found: training starts from scratch (slower)")
             return None
         env = self.cfg["env"]
-        buf = ReplayBuffer(sum(sizes) + len(files) + 1, env["frame_size"], env["frame_stack"])
+        buf = ReplayBuffer(sum(sizes) + len(files) + 1, env["frame_size"], env["frame_stack"], state_dim(env))
         demo_tracker = ProgressTracker(self.tracker.ref, self.cfg, SplitTracker(self.tracker.splits.best))
         for f in files:
             n, total = load_demo(f, buf, demo_tracker)
+            if n == 0 and env["lidar_beams"]:
+                self.log(f"demo {f.name}: skipped, it has no lidar readings (re-record it with the lidar on)")
+                continue
             self.log(f"demo {f.name}: {n} transitions, reward {total:.1f}")
         return buf if buf.transitions else None
 
     def _load_checkpoint(self) -> None:
         sd = torch.load(self.ckpt, map_location=self.device, weights_only=False)
+        inputs = sd.get("inputs", {"state_dim": 48, "camera": True})   # checkpoints from before the lidar
+        want = self._inputs()
+        if inputs != want:
+            raise IncompatibleCheckpoint(
+                f"{self.ckpt} was trained with different inputs ({inputs}, now {want}); "
+                "env.camera and env.lidar_beams must match it. Use a new run.name or --fresh.")
         self.agent.load_state_dict(sd["agent"])
         self.episodes, self.best_ms = sd["episodes"], sd["best_ms"]
         self.env_steps_before = sd["env_steps"]
         self.log(f"resumed from {self.ckpt} ({self.episodes} episodes, {self.agent.updates} updates)")
+
+    def _inputs(self) -> dict:
+        env = self.cfg["env"]
+        return {"state_dim": state_dim(env), "camera": bool(env["camera"])}
 
     def save_checkpoint(self) -> Path:
         self.ckpt.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.ckpt.with_suffix(".tmp")
         with self.agent_lock:
             agent = self.agent.state_dict()
-        torch.save({"agent": agent, "episodes": self.episodes, "best_ms": self.best_ms,
+        torch.save({"agent": agent, "inputs": self._inputs(), "episodes": self.episodes, "best_ms": self.best_ms,
                     "env_steps": self.env_steps_before + self.online.transitions}, tmp)
         tmp.replace(self.ckpt)
         return self.ckpt
@@ -152,6 +176,7 @@ class Trainer:
 
     def run_episode(self, env: TMEnv, hooks=None) -> dict:
         obs = env.reset()
+        trace = [(env.last_tel.pos, env.last_tel.race_time_ms, env.last_tel.cp_count, env.last_tel.last_cp_time_ms)]
         with self.replay_lock:
             self.online.start_episode()
         total, steps, reason, info = 0.0, 0, None, None
@@ -160,6 +185,8 @@ class Trainer:
             self._refresh_policy()
             action = self.policy.act(obs.frames, obs.state)
             nxt, reward, reason, info = env.step(action)
+            t = env.last_tel
+            trace.append((t.pos, t.race_time_ms, t.cp_count, t.last_cp_time_ms))
             if hooks is not None:
                 hooks.on_step(env.last_tel, info)
                 if reason is None and hooks.should_reset_episode():
@@ -179,7 +206,38 @@ class Trainer:
         late = sorted(env.lateness) or [0.0]
         return {"end": reason or "stopped", "steps": steps, "reward": total, "lap_ms": lap_ms,
                 "race_time_s": tel.race_time_ms / 1000, "progress": info.progress if info else 0.0,
-                "late_p99_ms": late[int(0.99 * (len(late) - 1))] * 1000}
+                "late_p99_ms": late[int(0.99 * (len(late) - 1))] * 1000, "trace": trace}
+
+    def maybe_adopt_lap(self, ep: dict) -> bool:
+        """Make a finished lap the new reference line when it beats the current
+        one by track.adopt_best_gain_ms, so progress, lookahead and pace follow
+        the agent's faster line instead of staying anchored to the demo."""
+        gain_ms = self.cfg["track"]["adopt_best_gain_ms"]
+        ref = self.tracker.ref
+        if not gain_ms or ep["lap_ms"] is None or ref.times is None:
+            return False
+        ref_ms = ref.times[-1] * 1000.0
+        if ref_ms - ep["lap_ms"] < gain_ms:
+            return False
+        pos = np.array([p for p, *_ in ep["trace"]], dtype=np.float64)
+        times = np.array([t for _, t, *_ in ep["trace"]], dtype=np.float64) / 1000.0
+        cps, last = [], 0
+        for _, _, count, cp_ms in ep["trace"]:
+            if count > last:
+                cps.append(int(cp_ms))
+                last = count
+        start = int(np.argmax(times >= 0))   # drop the countdown before the clock starts
+        new = ReferenceLine.from_positions(pos[start:], self.cfg["track"]["reference_spacing_m"], times[start:])
+        backup = self.store.root / "reference_demo.npz"
+        if not backup.exists():
+            ref.save(backup)
+        new.save(self.store.reference)
+        SplitTracker(cps).save(self.store.splits)
+        self.tracker.ref = new
+        self.tracker.splits.best = cps
+        self.log(f"new reference line: {ep['lap_ms'] / 1000:.3f}s lap replaces {ref_ms / 1000:.3f}s")
+        self.demo = self._load_demos()   # demo rewards follow the new line
+        return True
 
     def _log_episode(self, ep: dict, writer, f) -> dict:
         self.episodes += 1
@@ -248,7 +306,9 @@ class Trainer:
                         self.log(f"game not responding ({exc}); retrying")
                         time.sleep(2.0)
                         continue
-                    hooks.on_episode(self._log_episode(ep, writer, f))
+                    row = self._log_episode(ep, writer, f)
+                    self.maybe_adopt_lap(ep)
+                    hooks.on_episode(row)
                     if time.monotonic() - last_ckpt >= every:
                         self.save_checkpoint()
                         last_ckpt = time.monotonic()

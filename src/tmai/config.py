@@ -61,8 +61,16 @@ def validate(cfg: dict) -> None:
 
     if env["restart_button"] not in BUTTONS:
         raise ConfigError(f"env.restart_button must be one of {sorted(BUTTONS)}")
+    from tmai.game.input_guard import MODES
+
+    if env["input_guard"] not in MODES:
+        raise ConfigError(f"env.input_guard must be one of {list(MODES)}")
     if env["capture_backend"] not in ("window", "screen"):
         raise ConfigError("env.capture_backend must be window or screen")
+    if env["lidar_beams"] < 0 or env["lidar_beams"] > 64:
+        raise ConfigError("env.lidar_beams must be between 0 (off) and 64")
+    if len(env["lidar_origin"]) != 2 or not all(0.0 <= v <= 1.0 for v in env["lidar_origin"]):
+        raise ConfigError("env.lidar_origin must be [x, y] with both between 0 and 1")
     if cfg["dashboard"]["host"] not in ("127.0.0.1", "localhost"):
         raise ConfigError("dashboard.host must stay on localhost")
     if cfg["dashboard"]["port"] == cfg["dashboard"]["link_port"]:

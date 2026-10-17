@@ -22,9 +22,29 @@ env:
   # which restarts maps without checkpoints (like tmrl-test). For maps with
   # checkpoints, bind "Give up" to a free button in game and set it here.
   restart_button: B
+  # Windows reads the virtual pad as a real controller, so menus like Alt+Tab,
+  # Start and Game Bar would move with the agent's steering. shell: hold the
+  # pad neutral while Alt/Win is held or such a menu is in front (the game may
+  # stay in the background). game: only drive while the game is in front.
+  # off: never hold back.
+  input_guard: shell
   # window: capture the game window directly (works behind other windows).
   # screen: capture the screen area (game must be visible and on top).
   capture_backend: window
+  # camera: true adds a small CNN over the stacked game frames. Off by default:
+  # the agent drives from telemetry, the racing line and the lidar beams, which
+  # is lighter on the GPU and learns faster. Changing it needs a fresh run.
+  camera: false
+  # Screen lidar (as in TMRL): beams cast across the game image from
+  # lidar_origin (x, y as fractions of the picture, near the car) until they hit
+  # a border darker than lidar_dark, which tells the agent how much room it has
+  # ahead and to the sides. Only works on maps whose borders are darker than
+  # the road; `tmai capture-test` draws the beams so you can check. 0 = off.
+  # Changing it changes the inputs: re-record demos and start a fresh run.
+  lidar_beams: 19
+  lidar_width: 256            # beams are measured on a frame this many pixels wide
+  lidar_origin: [0.5, 0.9]
+  lidar_dark: 60              # 0..255 grayscale; darker pixels count as border
 
 track:
   reference_spacing_m: 1.0    # resolution of the reference line
@@ -32,10 +52,14 @@ track:
   wrong_way_m: 25.0           # end the attempt after falling this far behind the best progress
   off_track_m: 0.0            # end when this far from the line (0 = off; tracks vary)
   crash_speed_drop_kmh: 40.0  # speed lost in one step that counts as a crash
+  # When the agent beats the reference lap by this much, its lap becomes the new
+  # reference line (your demo line is kept as reference_demo.npz). 0 = never.
+  adopt_best_gain_ms: 50
 
 reward:
   progress_per_m: 0.1         # main signal: metres gained along the reference line
   time_penalty: 0.01          # per step, so faster is always better
+  pace_per_s: 10.0            # per second gained (or lost) on the reference lap, point by point
   crash_penalty: 1.0
   split_bonus_per_s: 1.0      # per second faster than the best split at a checkpoint
   split_bonus_cap: 2.0
