@@ -46,7 +46,10 @@ self-improving reference line.**
    image augmentation (DrQ) against overfitting.
 4. **Reward.** Progress along the reference line per step (as TMRL does), a
    penalty for wall contact and a time penalty, plus a bonus for beating the
-   best checkpoint split. Episodes end on finish, being stuck, or timeout.
+   best checkpoint split. A pace term pays for every second gained on the
+   reference lap over each stretch of track (and charges for seconds lost),
+   so going faster is rewarded point by point, not only at the finish.
+   Episodes end on finish, being stuck, or timeout.
 5. **Continuous improvement.** The reference line starts as your demo lap.
    Whenever the agent sets a new best lap, that lap becomes the reference, so
    progress reward and lookahead follow ever-faster lines instead of anchoring

@@ -8,8 +8,9 @@ from pathlib import Path
 import numpy as np
 
 
-def resample(points: np.ndarray, spacing: float) -> np.ndarray:
-    """Evenly spaced points along the polyline through `points` (N, 3)."""
+def resample(points: np.ndarray, spacing: float, values: np.ndarray | None = None):
+    """Evenly spaced points along the polyline through `points` (N, 3). With
+    `values` (N,), also returns them interpolated at the new points."""
     pts = np.asarray(points, dtype=np.float64)
     seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     keep = np.concatenate([[True], seg > 1e-6])  # drop standstill duplicates
@@ -20,31 +21,47 @@ def resample(points: np.ndarray, spacing: float) -> np.ndarray:
     targets = np.arange(0.0, s[-1], spacing)
     if s[-1] - targets[-1] > 1e-6:
         targets = np.append(targets, s[-1])
-    return np.stack([np.interp(targets, s, pts[:, k]) for k in range(3)], axis=1)
+    out = np.stack([np.interp(targets, s, pts[:, k]) for k in range(3)], axis=1)
+    if values is None:
+        return out
+    return out, np.interp(targets, s, np.asarray(values, dtype=np.float64)[keep])
 
 
 class ReferenceLine:
-    def __init__(self, points: np.ndarray, spacing: float):
+    """`times` (optional, seconds) is when the lap the line came from passed
+    each point; it lets the reward compare the car's pace with that lap."""
+
+    def __init__(self, points: np.ndarray, spacing: float, times: np.ndarray | None = None):
         self.points = np.asarray(points, dtype=np.float64)
         self.spacing = spacing
+        self.times = None if times is None else np.maximum.accumulate(np.asarray(times, dtype=np.float64))
         seg = np.linalg.norm(np.diff(self.points, axis=0), axis=1)
         self.s = np.concatenate([[0.0], np.cumsum(seg)])
         self.length = float(self.s[-1])
 
     @classmethod
-    def from_positions(cls, positions: np.ndarray, spacing: float = 1.0) -> "ReferenceLine":
-        return cls(resample(positions, spacing), spacing)
+    def from_positions(cls, positions: np.ndarray, spacing: float = 1.0,
+                       times: np.ndarray | None = None) -> "ReferenceLine":
+        if times is None:
+            return cls(resample(positions, spacing), spacing)
+        points, point_times = resample(positions, spacing, times)
+        return cls(points, spacing, point_times)
+
+    def time_at(self, s: float) -> float:
+        return float(np.interp(s, self.s, self.times))
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp.npz")
-        np.savez(tmp, points=self.points, spacing=self.spacing)
+        extra = {} if self.times is None else {"times": self.times}
+        np.savez(tmp, points=self.points, spacing=self.spacing, **extra)
         tmp.replace(path)
 
     @classmethod
     def load(cls, path: Path) -> "ReferenceLine":
         with np.load(path) as data:
-            return cls(data["points"], float(data["spacing"]))
+            times = data["times"] if "times" in data.files else None
+            return cls(data["points"], float(data["spacing"]), times)
 
     def project(self, pos, hint: int | None = None, window: int = 80) -> tuple[int, float, float]:
         """(segment index, distance along the line in m, distance from the line in m).

@@ -161,3 +161,22 @@ def test_record_laps_drops_restarted_attempts(tmp_path):
     assert len(saved) == 1
     with np.load(saved[0]) as d:
         assert int(d["lap_time_ms"]) == 2000 and len(d["actions"]) == 41
+
+
+def test_reference_times_roundtrip_and_pace_reward(tmp_path):
+    xs = np.linspace(0, 100, 101)
+    pts = np.stack([xs, 0 * xs, 0 * xs], 1)
+    ref = ReferenceLine.from_positions(pts, 1.0, xs / 10.0)   # reference lap: 10 m/s
+    assert ref.time_at(50.0) == pytest.approx(5.0)
+    ref.save(tmp_path / "r.npz")
+    assert ReferenceLine.load(tmp_path / "r.npz").time_at(80.0) == pytest.approx(8.0)
+    cfg = load_config(None, ["reward.pace_per_s=10"])
+    tr = ProgressTracker(ref, cfg)
+    tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=0))
+    fast = tr.step(tel(pos=(2.0, 0.0, 0.0), race_time_ms=100))    # 20 m/s: 0.1 s gained
+    assert fast.terms["pace"] == pytest.approx(1.0)
+    slow = tr.step(tel(pos=(2.5, 0.0, 0.0), race_time_ms=200))    # 5 m/s: 0.05 s lost
+    assert slow.terms["pace"] == pytest.approx(-0.5)
+    plain = ProgressTracker(ReferenceLine.from_positions(pts, 1.0), cfg)
+    plain.reset(tel(pos=(0.0, 0.0, 0.0)))
+    assert "pace" not in plain.step(tel(pos=(2.0, 0.0, 0.0), race_time_ms=100)).terms
