@@ -29,21 +29,6 @@ class Encoder(nn.Module):
         return self.head(self.convs(x).flatten(1))
 
 
-class NoEncoder(nn.Module):
-    """Stands in for the CNN when env.camera is off: the networks get no image
-    features at all, only the state vector (telemetry, racing line, lidar)."""
-
-    def forward(self, frames: torch.Tensor) -> torch.Tensor:
-        return torch.zeros((frames.shape[0], 0), device=frames.device)
-
-
-def make_encoder(env: dict, m: dict, feature_dim: int) -> tuple[nn.Module, int]:
-    """(encoder, its feature size): the CNN, or nothing when env.camera is off."""
-    if not env["camera"]:
-        return NoEncoder(), 0
-    return Encoder(env["frame_stack"], env["frame_size"], m["encoder_channels"], feature_dim), feature_dim
-
-
 def mlp(n_in: int, hidden: int, n_out: int, dropout: float = 0.0, layer_norm: bool = False) -> nn.Sequential:
     layers: list[nn.Module] = []
     for _ in range(2):

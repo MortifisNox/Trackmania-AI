@@ -63,15 +63,6 @@ def validate(cfg: dict) -> None:
         raise ConfigError(f"env.restart_button must be one of {sorted(BUTTONS)}")
     if env["capture_backend"] not in ("window", "screen"):
         raise ConfigError("env.capture_backend must be window or screen")
-    if env["lidar_beams"] < 0 or env["lidar_beams"] > 64:
-        raise ConfigError("env.lidar_beams must be between 0 (off) and 64")
-    if len(env["lidar_origin"]) != 2 or not all(0.0 <= v <= 1.0 for v in env["lidar_origin"]):
-        raise ConfigError("env.lidar_origin must be [x, y] with both between 0 and 1")
-    far = env["lidar_far_origin"]
-    if far and (len(far) != 2 or not all(0.0 <= v <= 1.0 for v in far)):
-        raise ConfigError("env.lidar_far_origin must be [x, y] with both between 0 and 1, or [] for off")
-    if not 0 < env["lidar_far_spread_deg"] <= 90:
-        raise ConfigError("env.lidar_far_spread_deg must be between 0 and 90")
     if cfg["dashboard"]["host"] not in ("127.0.0.1", "localhost"):
         raise ConfigError("dashboard.host must stay on localhost")
     if cfg["dashboard"]["port"] == cfg["dashboard"]["link_port"]:

@@ -46,7 +46,6 @@ def test_train_dashboard_stop_report_and_resume(tmp_path, monkeypatch):
     state = RunState(None, 0)
     sets = [f"run.output_dir={tmp_path.as_posix()}", "run.track=T", "replay.capacity=4000", "train.batch_size=16",
             "model.hidden_dim=32", "model.encoder_channels=[8,8,8,8]", "env.step_hz=200", "env.episode_timeout_s=5",
-            "env.camera=true", "env.lidar_beams=0",   # same fake game as test_rl_torch; lidar has its own tests
             "train.warmup_steps=40", "train.updates_per_step=1", "replay.snapshot_every_min=0.01",
             f"dashboard.link_port={state.link_port}", "dashboard.tensorboard=false"]
     argv = [a for s in sets for a in ("--set", s)]

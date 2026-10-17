@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from tmai.budget import state_dim
 from tmai.rl.demos import load_demo
 from tmai.rl.env import TERMINAL, TMEnv
 from tmai.rl.replay import ReplayBuffer, concat_batches
@@ -26,10 +25,6 @@ EPISODE_FIELDS = ["episode", "wall_time", "steps", "end", "race_time_s", "progre
                   "env_steps", "updates", "critic_loss", "actor_loss", "alpha", "q", "entropy",
                   "late_p99_ms"]
 SYNC_EVERY = 20   # learner updates between refreshes of the driving policy
-
-
-class IncompatibleCheckpoint(RuntimeError):
-    """The run's checkpoint was trained with other inputs (camera or lidar)."""
 
 
 def pick_device() -> torch.device:
@@ -65,7 +60,7 @@ class Trainer:
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.demo = self._load_demos()
-        self.online = ReplayBuffer(cfg["replay"]["capacity"], env["frame_size"], env["frame_stack"], state_dim(env))
+        self.online = ReplayBuffer(cfg["replay"]["capacity"], env["frame_size"], env["frame_stack"])
         self.agent = SACAgent(cfg, self.device)
         self.policy = Policy(cfg, self.device)
         self.episodes, self.best_ms, self.env_steps_before = 0, None, 0
@@ -96,39 +91,26 @@ class Trainer:
             self.log("no demo laps found: training starts from scratch (slower)")
             return None
         env = self.cfg["env"]
-        buf = ReplayBuffer(sum(sizes) + len(files) + 1, env["frame_size"], env["frame_stack"], state_dim(env))
+        buf = ReplayBuffer(sum(sizes) + len(files) + 1, env["frame_size"], env["frame_stack"])
         demo_tracker = ProgressTracker(self.tracker.ref, self.cfg, SplitTracker(self.tracker.splits.best))
         for f in files:
             n, total = load_demo(f, buf, demo_tracker)
-            if n == 0 and env["lidar_beams"]:
-                self.log(f"demo {f.name}: skipped, it has no lidar readings (re-record it with the lidar on)")
-                continue
             self.log(f"demo {f.name}: {n} transitions, reward {total:.1f}")
         return buf if buf.transitions else None
 
     def _load_checkpoint(self) -> None:
         sd = torch.load(self.ckpt, map_location=self.device, weights_only=False)
-        inputs = sd.get("inputs", {"state_dim": 48, "camera": True})   # checkpoints from before the lidar
-        want = self._inputs()
-        if inputs != want:
-            raise IncompatibleCheckpoint(
-                f"{self.ckpt} was trained with different inputs ({inputs}, now {want}); "
-                "env.camera and env.lidar_beams must match it. Use a new run.name or --fresh.")
         self.agent.load_state_dict(sd["agent"])
         self.episodes, self.best_ms = sd["episodes"], sd["best_ms"]
         self.env_steps_before = sd["env_steps"]
         self.log(f"resumed from {self.ckpt} ({self.episodes} episodes, {self.agent.updates} updates)")
-
-    def _inputs(self) -> dict:
-        env = self.cfg["env"]
-        return {"state_dim": state_dim(env), "camera": bool(env["camera"])}
 
     def save_checkpoint(self) -> Path:
         self.ckpt.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.ckpt.with_suffix(".tmp")
         with self.agent_lock:
             agent = self.agent.state_dict()
-        torch.save({"agent": agent, "inputs": self._inputs(), "episodes": self.episodes, "best_ms": self.best_ms,
+        torch.save({"agent": agent, "episodes": self.episodes, "best_ms": self.best_ms,
                     "env_steps": self.env_steps_before + self.online.transitions}, tmp)
         tmp.replace(self.ckpt)
         return self.ckpt

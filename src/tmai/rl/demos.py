@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 
-from tmai.budget import STATE_DIM
 from tmai.game import protocol
 from tmai.game.protocol import Telemetry
 from tmai.rl.features import from_controls, state_vector
@@ -41,23 +40,18 @@ def demo_telemetry(d) -> list[Telemetry]:
 
 
 def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker) -> tuple[int, float]:
-    """Adds one demo lap; returns (transitions added, total reward). When the
-    buffer's states include lidar beams, laps recorded without them are skipped."""
-    n_beams = buffer.state.shape[1] - STATE_DIM
+    """Adds one demo lap; returns (transitions added, total reward)."""
     with np.load(path) as d:
         if "frames" not in d.files:
             return 0, 0.0
-        if n_beams and ("beams" not in d.files or d["beams"].shape[1:] != (n_beams,)):
-            return 0, 0.0
         frames = d["frames"]
-        beams = d["beams"] if n_beams else [None] * len(frames)
         tels = demo_telemetry(d)
     if len(frames) != len(tels) or len(tels) < 2:
         return 0, 0.0
     actions = [from_controls(t.steer, t.gas, t.brake) for t in tels]
     buffer.start_episode()
     tracker.reset(tels[0])
-    state = state_vector(tels[0], tracker.lookahead(tels[0]), actions[0], beams[0])
+    state = state_vector(tels[0], tracker.lookahead(tels[0]), actions[0])
     total, added = 0.0, 0
     for i in range(len(tels) - 1):
         info = tracker.step(tels[i + 1])
@@ -65,7 +59,7 @@ def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker) -> tup
         buffer.add(frames[i], state, actions[i + 1], info.reward, terminal=info.done == "finished")
         total += info.reward
         added += 1
-        state = state_vector(tels[i + 1], info.lookahead, actions[i + 1], beams[i + 1])
+        state = state_vector(tels[i + 1], info.lookahead, actions[i + 1])
         if info.done:
             break
     buffer.add(frames[i + 1], state)

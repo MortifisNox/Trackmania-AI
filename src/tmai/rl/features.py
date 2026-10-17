@@ -22,23 +22,10 @@ def car_frame(vec, forward, up) -> np.ndarray:
     return np.array([v @ f, v @ left, v @ u])
 
 
-def tilt(forward, up) -> tuple[float, float]:
-    """(pitch, roll) of the car as sines, -1..1: how far its nose and its left
-    side point up out of the horizontal (the game's world Y axis is up)."""
-    f = np.asarray(forward, dtype=np.float64)
-    u = np.asarray(up, dtype=np.float64)
-    f /= max(np.linalg.norm(f), 1e-9)
-    u /= max(np.linalg.norm(u), 1e-9)
-    left = np.cross(u, f)
-    return float(np.clip(f[1], -1, 1)), float(np.clip(left[1], -1, 1))
-
-
-def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, beams=None) -> np.ndarray:
-    """50 floats, all roughly in -1..1:
+def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action) -> np.ndarray:
+    """48 floats, all roughly in -1..1:
     speed, gear, rpm, velocity in the car frame (3), on ground, wheel surface
-    materials (4), wheel slip (4), previous action (3), pitch and roll (2),
-    lookahead points (30, with height, so slopes and ramps ahead show up);
-    then one 0..1 length per lidar beam when the lidar is on."""
+    materials (4), wheel slip (4), previous action (3), lookahead points (30)."""
     vel = car_frame(tel.vel, tel.dir, tel.up) / 50.0
     head = [
         tel.speed / 100.0, tel.gear / 5.0, tel.rpm / 11000.0, *vel,
@@ -46,15 +33,12 @@ def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, beams=None)
         *(m / 80.0 for m in tel.wheel_material),
         *(min(abs(s), 2.0) for s in tel.wheel_slip),
         *prev_action,
-        *tilt(tel.dir, tel.up),
     ]
     out = np.concatenate([np.asarray(head, dtype=np.float32),
                           np.asarray(lookahead, dtype=np.float32) / LOOKAHEAD_SCALE])
     if out.shape[0] != STATE_DIM:
         raise ValueError(f"state vector has {out.shape[0]} values, expected {STATE_DIM} "
                          "(env.lookahead_points must be 10)")
-    if beams is not None:
-        out = np.concatenate([out, np.asarray(beams, dtype=np.float32)])
     return np.clip(out, -5.0, 5.0)
 
 
