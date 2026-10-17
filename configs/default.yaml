@@ -57,11 +57,30 @@ model:
 train:
   batch_size: 256
   learning_rate: 3.0e-4
-  gamma: 0.99
+  # 0.995 at 20 Hz weighs about the next 10 s of driving (0.99 was 5 s), so the
+  # critic sees how a corner exit pays off down the following straight.
+  gamma: 0.995
+  n_step: 3                   # rewards summed over this many steps before bootstrapping (Linesight uses 3)
   tau: 0.005
   updates_per_step: 4         # update-to-data ratio; auto-lowered when hot
   warmup_steps: 1000          # steps of the untrained (near-random) policy before learning starts
-  demo_ratio: 0.5             # fraction of each batch from demonstrations (RLPD)
+  # Share of each batch drawn from guide laps: your demo laps plus the agent's own
+  # fastest laps. Starts at demo_ratio (RLPD) and falls linearly to demo_ratio_end
+  # over demo_anneal_steps driving steps, so slower demos stop anchoring the policy.
+  # Setting it from the dashboard turns the schedule off for the rest of the run.
+  demo_ratio: 0.5
+  demo_ratio_end: 0.1
+  demo_anneal_steps: 200000   # ~3 h of driving at 20 Hz
+  best_laps_kept: 3           # agent's fastest finished laps kept as guide laps (0 = demos only)
+  # SAC entropy target: how much randomness the policy keeps. Falls linearly from
+  # target_entropy to target_entropy_end, so late training wastes fewer tenths on
+  # noise. Setting it from the dashboard turns the schedule off for the rest of the run.
+  target_entropy: -3.0
+  target_entropy_end: -6.0
+  entropy_anneal_steps: 500000
+  # Every Nth attempt is a test lap without exploration noise; the best test lap's
+  # driving weights are kept in checkpoints/best_test_lap.pt. 0 = no test laps.
+  eval_every: 10
   checkpoint_every_min: 10
 
 replay:

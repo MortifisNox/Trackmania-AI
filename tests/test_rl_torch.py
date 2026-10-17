@@ -191,3 +191,64 @@ def test_faster_lap_becomes_reference(tmp_path):
     assert (store.root / "reference_demo.npz").exists()
     assert ReferenceLine.load(store.reference).times[-1] == pytest.approx(1.0)
     assert trainer.tracker.ref.times[-1] == pytest.approx(1.0) and trainer.demo is not None
+
+
+def test_anneal_schedule():
+    from tmai.rl.train import anneal
+
+    assert anneal(0.5, 0.1, 100, 0) == 0.5
+    assert anneal(0.5, 0.1, 100, 50) == pytest.approx(0.3)
+    assert anneal(0.5, 0.1, 100, 1000) == pytest.approx(0.1)
+    assert anneal(0.5, 0.1, 0, 0) == 0.1
+
+
+def test_schedules_follow_steps_until_set_by_hand(tmp_path):
+    from tmai.rl.train import Trainer
+
+    cfg = small_cfg(tmp_path, demo_anneal_steps=100, entropy_anneal_steps=100)
+    make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    assert trainer.demo_n == 8 and trainer.agent.target_entropy == -3.0
+    trainer.env_steps_before = 50
+    trainer._apply_schedules()
+    assert trainer.demo_n == 5 and trainer.agent.target_entropy == pytest.approx(-4.5)   # 0.3 * 16 rounds to 5
+    trainer.demo_n, trainer.agent.target_entropy = 12, -1.0      # what the dashboard does
+    trainer.env_steps_before = 100
+    trainer._apply_schedules()
+    assert trainer.demo_n == 12 and trainer.agent.target_entropy == -1.0
+
+
+def test_best_laps_join_the_guide_laps(tmp_path):
+    from tmai.rl.env import TMEnv
+    from tmai.rl.train import Trainer
+
+    cfg = small_cfg(tmp_path, best_laps_kept=2)
+    make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    demo_only = trainer.demo.transitions
+    env = TMEnv(cfg, trainer.game, trainer.tracker)
+    ep = trainer.run_episode(env)
+    assert ep["end"] == "finished" and len(ep["lap"]["actions"]) == ep["steps"]
+    assert trainer.keep_best_lap(ep)
+    assert trainer.demo.transitions == demo_only + ep["steps"]
+    np.testing.assert_allclose(trainer.demo.action[demo_only + 1], ep["lap"]["actions"][0])
+    slower = {**ep, "lap_ms": ep["lap_ms"] + 10}
+    assert trainer.keep_best_lap(slower) and not trainer.keep_best_lap({**ep, "lap_ms": ep["lap_ms"] + 20})
+    assert [lap["lap_ms"] for lap in trainer.best_laps] == [ep["lap_ms"], ep["lap_ms"] + 10]
+    batch = trainer.sample()
+    assert batch["reward"].shape == (16,) and "discount" in batch
+
+
+def test_test_laps_drive_without_noise_and_keep_the_best(tmp_path):
+    from tmai.rl.train import Trainer
+
+    cfg = small_cfg(tmp_path, warmup_steps=10, updates_per_step=1, eval_every=2)
+    make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    trainer.train(minutes=0.03)
+    run_dir = tmp_path / "default"
+    rows = (run_dir / "eval.csv").read_text().splitlines()
+    assert rows[0].startswith("episode,") and len(rows) >= 2
+    assert trainer.best_eval_ms is not None
+    best = torch.load(run_dir / "checkpoints" / "best_test_lap.pt", weights_only=False)
+    assert best["lap_ms"] == trainer.best_eval_ms and "actor" in best["policy"]

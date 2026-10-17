@@ -38,7 +38,10 @@ self-improving reference line.**
    high-UTD SAC variants work in this game.
 2. **Demonstration seeding (RLPD-style).** You drive a few laps of each new
    track; every training batch draws 50% from those laps and 50% from the
-   agent's own experience. This removes the long random-driving phase.
+   agent's own experience. This removes the long random-driving phase. The
+   demo share then falls to 10% over the first ~3 hours of driving, and the
+   agent's three fastest finished laps join the demos as guide laps, so laps
+   slower than the agent stop anchoring its line.
 3. **Observations.** 4 stacked 64x64 grayscale frames (sees surface types and
    walls) plus a state vector from the Openplanet plugin: speed, gear, RPM,
    wheel contact and surface material, velocity in the car frame, previous
@@ -53,8 +56,14 @@ self-improving reference line.**
 5. **Continuous improvement.** The reference line starts as your demo lap.
    Whenever the agent sets a new best lap, that lap becomes the reference, so
    progress reward and lookahead follow ever-faster lines instead of anchoring
-   to the human one. Evaluation laps run with the deterministic policy.
-6. **Arbitrary tracks.** Inputs are local (camera frames, car-frame
+   to the human one. Every 10th attempt is a test lap with the deterministic
+   policy; the best one's weights are kept in `checkpoints/best_test_lap.pt`
+   and every test lap is logged to `eval.csv`. The SAC entropy target falls
+   from -3 to -6 over ~7 hours, so late training spends less time on noise.
+6. **Horizon.** 3-step returns and gamma 0.995 (about 10 s at 20 Hz), so the
+   critic sees how a corner exit pays off down the next straight. Linesight
+   uses 3-step returns and anneals gamma to 1.
+7. **Arbitrary tracks.** Inputs are local (camera frames, car-frame
    lookahead), not track coordinates, so one policy can train across a set of
    tracks and be fine-tuned per track.
 

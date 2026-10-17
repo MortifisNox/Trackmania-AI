@@ -68,7 +68,12 @@ class ReplayBuffer:
             out[:, k] = self.frames[cur]
         return out
 
-    def sample(self, n: int, rng: np.random.Generator) -> dict:
+    def sample(self, n: int, rng: np.random.Generator, n_step: int = 1, gamma: float = 0.99) -> dict:
+        """A batch of n-step transitions. `reward` is the discounted sum of up to
+        n_step rewards and `discount` is what the bootstrapped value is scaled by:
+        gamma**k after k steps, or 0 when the episode ended in a terminal state.
+        A return is cut short where the episode stops, so it never crosses into
+        another attempt."""
         if self.size < 2:
             raise ValueError("replay buffer is empty")
         idx = np.empty(0, dtype=np.int64)
@@ -80,10 +85,24 @@ class ReplayBuffer:
         else:
             raise ValueError("replay buffer has too few complete transitions")
         idx = idx[:n]
-        nxt = (idx + 1) % self.capacity
+        ret = np.zeros(n, dtype=np.float32)
+        disc = np.ones(n, dtype=np.float32)
+        cur, active = idx.copy(), np.ones(n, dtype=bool)
+        for k in range(n_step):
+            ret[active] += disc[active] * self.reward[cur[active]]
+            disc[active] *= gamma
+            ended = active & (self.terminal[cur] > 0)
+            disc[ended] = 0.0
+            active &= ~ended
+            if k == n_step - 1:
+                break
+            nxt = (cur + 1) % self.capacity
+            active &= self._valid(nxt)    # the attempt goes on with another transition
+            cur = np.where(active, nxt, cur)
+        nxt = (cur + 1) % self.capacity
         return {
             "frames": self._stack(idx), "state": self.state[idx], "action": self.action[idx],
-            "reward": self.reward[idx], "terminal": self.terminal[idx],
+            "reward": ret, "discount": disc,
             "next_frames": self._stack(nxt), "next_state": self.state[nxt],
         }
 

@@ -49,17 +49,26 @@ def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker) -> tup
     if len(frames) != len(tels) or len(tels) < 2:
         return 0, 0.0
     actions = [from_controls(t.steer, t.gas, t.brake) for t in tels]
+    # The inputs seen at step i+1 are the ones held between steps i and i+1.
+    return add_lap(buffer, tracker, frames, tels, actions[1:], actions[0])
+
+
+def add_lap(buffer: ReplayBuffer, tracker: ProgressTracker, frames, tels: list[Telemetry],
+            actions, first_prev_action) -> tuple[int, float]:
+    """Adds one recorded attempt with observations and rewards recomputed against
+    the tracker's current reference line. actions[i] is the action held from
+    step i to step i+1; first_prev_action is the one before step 0. Returns
+    (transitions added, total reward)."""
     buffer.start_episode()
     tracker.reset(tels[0])
-    state = state_vector(tels[0], tracker.lookahead(tels[0]), actions[0])
+    state = state_vector(tels[0], tracker.lookahead(tels[0]), first_prev_action)
     total, added = 0.0, 0
     for i in range(len(tels) - 1):
         info = tracker.step(tels[i + 1])
-        # The inputs seen at step i+1 are the ones held between steps i and i+1.
-        buffer.add(frames[i], state, actions[i + 1], info.reward, terminal=info.done == "finished")
+        buffer.add(frames[i], state, actions[i], info.reward, terminal=info.done == "finished")
         total += info.reward
         added += 1
-        state = state_vector(tels[i + 1], info.lookahead, actions[i + 1])
+        state = state_vector(tels[i + 1], info.lookahead, actions[i])
         if info.done:
             break
     buffer.add(frames[i + 1], state)

@@ -50,8 +50,13 @@ def validate(cfg: dict) -> None:
         raise ConfigError("gpu.max_vram_fraction must be between 0.1 and 0.9")
     if gpu["temp_soft_c"] >= gpu["temp_hard_c"]:
         raise ConfigError("gpu.temp_soft_c must be below gpu.temp_hard_c")
-    if not 0.0 <= train["demo_ratio"] < 1.0:
-        raise ConfigError("train.demo_ratio must be in [0, 1)")
+    for key in ("demo_ratio", "demo_ratio_end"):
+        if not 0.0 <= train[key] < 1.0:
+            raise ConfigError(f"train.{key} must be in [0, 1)")
+    if not 0.0 < train["gamma"] <= 1.0:
+        raise ConfigError("train.gamma must be in (0, 1]")
+    if train["n_step"] < 1:
+        raise ConfigError("train.n_step must be at least 1")
     if train["batch_size"] % 8:
         # Tensor cores want dimensions that are multiples of 8.
         raise ConfigError("train.batch_size must be a multiple of 8")
