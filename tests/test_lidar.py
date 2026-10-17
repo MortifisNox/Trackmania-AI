@@ -53,6 +53,8 @@ def test_lidar_config(tmp_path):
     assert from_config(cfg["env"]) is None and state_dim(cfg["env"]) == STATE_DIM
     cfg = load_config()
     assert not cfg["env"]["camera"]                                 # default: beams, no image
+    assert from_config(cfg["env"]).beams == 38 and state_dim(cfg["env"]) == STATE_DIM + 38   # near + far fan
+    cfg = load_config(None, ["env.lidar_far_origin=[]"])
     assert from_config(cfg["env"]).beams == 19 and state_dim(cfg["env"]) == STATE_DIM + 19
     assert wide_size(1920, 1080, 256) == (256, 144)
     with pytest.raises(ConfigError):
@@ -72,3 +74,14 @@ def test_demo_without_beams_is_skipped_when_lidar_is_on(tmp_path):
     assert load_demo(demo, ReplayBuffer(100, 64, 4, STATE_DIM + 5), tracker) == (0, 0.0)
     n, _ = load_demo(demo, ReplayBuffer(100, 64, 4), tracker)
     assert n > 0
+
+
+def test_far_fan_sees_a_wall_before_the_near_fan():
+    cfg = load_config()
+    lidar = from_config(cfg["env"])
+    img = road()
+    img[:72, :] = 10                                                # a wall halfway up the picture
+    lengths = lidar.measure(img)
+    near, far = lengths[:19], lengths[19:]
+    assert far[9] < 0.05 < near[9]                                  # straight ahead: far fan starts at the wall
+    assert len(lidar.endpoints(img, lengths)) == 2

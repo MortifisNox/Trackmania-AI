@@ -10,7 +10,9 @@ ACTION_DIM = 3
 
 def state_dim(env: dict) -> int:
     """Length of the state vector: the base inputs plus one per lidar beam."""
-    return STATE_DIM + int(env.get("lidar_beams") or 0)
+    from tmai.game.lidar import beam_count
+
+    return STATE_DIM + beam_count(env)
 
 
 def bytes_per_transition(frame_size: int, state_dim: int = STATE_DIM) -> int:
