@@ -71,9 +71,9 @@ most useful thing a reviewer can get, since CI cannot run Trackmania.
 ## Releases
 
 Write the notes in `docs/releases/vX.Y.Z.md`, bump `version` in
-`pyproject.toml` and `src/tmai/__init__.py`, merge, then push a tag
-`vX.Y.Z` on `main`. The Release workflow publishes the GitHub release from
-that notes file.
+`pyproject.toml` and `src/tmai/__init__.py`, merge, then either push a tag
+`vX.Y.Z` on `main` or run the **Release** workflow from the Actions tab with
+that tag. It publishes the GitHub release from the notes file.
 
 ## Reporting bugs
 
