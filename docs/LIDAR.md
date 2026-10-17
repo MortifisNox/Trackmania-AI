@@ -7,12 +7,6 @@ the first dark pixels it meets, which on maps like tmrl-test is the track
 border. The beam lengths (0 = border right there, 1 = clear to the edge of the
 picture) join the telemetry and the racing line in the state vector.
 
-A second, far fan of 19 beams starts higher up the picture, further down the
-road, and spreads 60 degrees to each side. A ramp coming up fills more of the
-picture with road, so its beams get longer; a crest or a drop cuts them short.
-Together with the car's pitch and roll, the two fans work like a lidar tilted
-at two angles, and the far one sees turns and slopes before the car gets there.
-
 This is the approach TMRL uses. It is lighter than a CNN on the GPU and the
 agent learns from it faster, but it only works where the borders are clearly
 darker than the road.
@@ -26,8 +20,8 @@ tmai capture-test
 ```
 
 Besides `runs\capture_test.png` it now saves `runs\lidar_test.png`, the game
-image with the near beams drawn in red, the far beams in blue and their end
-points in yellow, and prints the lengths of both fans. Each beam should end on a track border. If they don't:
+image with the beams drawn in red and their end points in yellow, and prints
+the 19 lengths. Each beam should end on a track border. If they don't:
 
 - Beams all very short: the start point sits on the car or on something dark.
   Move it up, for example `tmai --set env.lidar_origin=[0.5,0.55] capture-test`.
@@ -56,9 +50,7 @@ tmai --set run.name=lidar train
 
 | key | default | meaning |
 | --- | --- | --- |
-| `env.lidar_beams` | 19 | beams per fan (0 turns the lidar off) |
-| `env.lidar_far_origin` | [0.5, 0.52] | where the far fan starts; `[]` turns it off |
-| `env.lidar_far_spread_deg` | 60 | how far the far fan spreads to each side of straight ahead |
+| `env.lidar_beams` | 19 | number of beams (0 turns the lidar off) |
 | `env.lidar_origin` | [0.5, 0.6] | where the beams start, as x and y fractions of the picture |
 | `env.lidar_dark` | 90 | grayscale level (0..255) below which a pixel counts as border |
 | `env.lidar_width` | 256 | width in pixels of the frame the beams are measured on |

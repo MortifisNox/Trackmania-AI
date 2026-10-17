@@ -118,21 +118,15 @@ def capture_test(cfg: dict, out_dir: Path, frames: int = 120) -> int:
             scale = max(1, 1024 // wide.shape[1])
             img = cv2.cvtColor(cv2.resize(wide, (wide.shape[1] * scale, wide.shape[0] * scale),
                                           interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR)
-            colors = [(0, 0, 255), (255, 128, 0)]   # near fan red, far fan blue (BGR)
-            for color, fan in zip(colors, lidar.endpoints(wide, lengths)):
-                for (x0, y0), (x1, y1) in fan:
-                    cv2.line(img, (x0 * scale, y0 * scale), (x1 * scale, y1 * scale), color, 2)
-                    cv2.circle(img, (x1 * scale, y1 * scale), 4, (0, 255, 255), -1)
+            for (x0, y0), (x1, y1) in lidar.endpoints(wide, lengths):
+                cv2.line(img, (x0 * scale, y0 * scale), (x1 * scale, y1 * scale), (0, 0, 255), 2)
+                cv2.circle(img, (x1 * scale, y1 * scale), 4, (0, 255, 255), -1)
             beams_path = out_dir / "lidar_test.png"
             cv2.imwrite(str(beams_path), img)
-            near = lengths[:lidar.layers[0].beams]
-            for name, i in zip(("near", "far"), range(len(lidar.layers))):
-                n = lidar.layers[0].beams
-                part = lengths[i * n:(i + 1) * n]
-                print(f"lidar {name} beams (left to right, 1 = clear):", " ".join(f"{v:.2f}" for v in part))
-            if statistics.median(near.tolist()) < 0.05:
+            print("lidar beam lengths (left to right, 1 = clear):", " ".join(f"{v:.2f}" for v in lengths))
+            if statistics.median(lengths.tolist()) < 0.05:
                 print("most beams stop right away: env.lidar_origin is probably on the car or on a dark area")
-            print(f"saved the lidar beams to {beams_path.resolve()}: each beam (red near, blue far) should stop at a track border")
+            print(f"saved the lidar beams to {beams_path.resolve()}: each red beam should stop at a track border")
         return 0 if fps >= 20 else 1
     finally:
         cap.close()

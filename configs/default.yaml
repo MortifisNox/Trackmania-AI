@@ -39,11 +39,6 @@ env:
   lidar_width: 256            # beams are measured on a frame this many pixels wide
   lidar_origin: [0.5, 0.6]    # just above the car with the default chase camera
   lidar_dark: 90              # 0..255 grayscale; darker pixels count as border
-  # A second, far fan of lidar_beams beams starting higher up the picture, so
-  # ramps, crests and turns change its readings before the car gets there.
-  # [] turns it off. It spreads lidar_far_spread_deg to each side of straight ahead.
-  lidar_far_origin: [0.5, 0.52]
-  lidar_far_spread_deg: 60
 
 track:
   reference_spacing_m: 1.0    # resolution of the reference line
