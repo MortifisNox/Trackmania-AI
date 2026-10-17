@@ -90,9 +90,10 @@ def gamepad_test(cfg: dict) -> int:
 def capture_test(cfg: dict, out_dir: Path, frames: int = 120) -> int:
     import cv2
 
-    from tmai.game.capture import ScreenCapture
+    from tmai.game.capture import open_capture
 
-    cap = ScreenCapture(cfg["env"]["frame_size"])
+    cap = open_capture(cfg["env"]["frame_size"], cfg["env"]["capture_backend"])
+    print(f"capture backend: {type(cap).__name__}")
     try:
         x0, y0, x1, y1 = cap.region
         print(f"game window client area: {x1 - x0}x{y1 - y0} at ({x0}, {y0})")
@@ -128,17 +129,18 @@ def drive_test(cfg: dict, episodes: int) -> int:
             game.restart()
             monitor.reset()
             clock.reset()
-            steps, reason = 0, None
+            steps, reason, top = 0, None, 0.0
             while reason is None:
                 lateness.append(clock.tick())
                 frame, t = game.observe()
                 ages.append(game.telemetry.age())
                 game.act((0.0, 1.0, 0.0))
                 reason = monitor.check(t)
+                top = max(top, t.speed_kmh)
                 steps += 1
             game.pad.release()
             print(f"episode {ep}: {reason} after {steps} steps, {t.race_time_ms / 1000:.2f}s, "
-                  f"{t.cp_count} checkpoints, top speed so far {t.speed_kmh:.0f} km/h")
+                  f"{t.cp_count} checkpoints, top speed {top:.0f} km/h")
     except TimeoutError as exc:
         ok = _check("drive loop", False, str(exc))
     finally:
@@ -151,3 +153,45 @@ def drive_test(cfg: dict, episodes: int) -> int:
         print(f"telemetry age: median {statistics.median(ages) * 1000:.1f} ms")
         ok &= _check("timing", p99 < 25, "p99 lateness must stay under half a step (25 ms)")
     return 0 if ok else 1
+
+
+def focus_test(cfg: dict, out_dir: Path) -> int:
+    """Drives while another window has focus, to see whether the game still
+    takes controller input and the capture still sees the game."""
+    import cv2
+
+    from tmai.game.interface import GameInterface
+
+    game = GameInterface(cfg, capture=True)
+    results = []
+    try:
+        print(f"capture backend: {type(game.capture).__name__}")
+        print("Click on THIS PowerShell window (or any other window) now, so the game is NOT focused.")
+        print("You can also drag another window over part of the game.")
+        for i in range(8, 0, -1):
+            print(f"  starting in {i}...", flush=True)
+            time.sleep(1)
+        game.restart()
+        results.append(_check("restart without focus", True))
+        frames_before = game.capture.new_frames
+        start = time.monotonic()
+        top = 0.0
+        while time.monotonic() - start < 4.0:
+            game.act((0.0, 1.0, 0.0))
+            frame, t = game.observe()
+            top = max(top, t.speed_kmh)
+            time.sleep(0.05)
+        game.pad.release()
+        fps = (game.capture.new_frames - frames_before) / 4.0
+        results.append(_check("game took input without focus", top > 30, f"top speed {top:.0f} km/h"))
+        results.append(_check("capture without focus", fps >= 20, f"{fps:.0f} new frames/s"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / "focus_test.png"
+        cv2.imwrite(str(path), cv2.resize(frame, (frame.shape[1] * 6, frame.shape[0] * 6),
+                                          interpolation=cv2.INTER_NEAREST))
+        print(f"saved what the agent saw to {path.resolve()} (it should show the game, not your other window)")
+    except TimeoutError as exc:
+        results.append(_check("restart without focus", False, str(exc)))
+    finally:
+        game.close()
+    return 0 if all(results) else 1

@@ -22,6 +22,7 @@ tmai get-map          # download the tmrl-test map into My Maps
 tmai telemetry        # print live telemetry
 tmai gamepad-test     # steer, brake, restart through the virtual pad
 tmai capture-test     # capture rate + image of what the agent sees
+tmai focus-test       # drive and capture while the game is in the background
 tmai drive-test       # full-throttle loop at 20 Hz with timing report
 tmai --set env.restart_button=BACK config   # override any value
 ```

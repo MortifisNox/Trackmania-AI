@@ -33,9 +33,10 @@ into the project thread.
 
 ## 4. Load the map
 
-**Create > Track Editor > Edit a Track > My Local Tracks > My Maps > tmrl-test**,
-then press the green flag (bottom right) to drive it. Keep the game windowed
-(1280x720) and fully on screen.
+Start the map from the game's **local play** menu (your My Maps folder), not
+from the track editor's test drive: in the editor's test drive the race clock
+and restarts behave differently. Keep the game windowed (1280x720) and not
+minimised.
 
 You can use your own map instead, as long as it is a local map file (see
 SAFE_USE.md). If it has checkpoints, the default restart button **B** respawns
@@ -53,6 +54,7 @@ focus. Paste all output in the project thread.
 tmai telemetry --seconds 10
 tmai gamepad-test
 tmai capture-test
+tmai focus-test
 tmai drive-test
 ```
 
@@ -62,5 +64,9 @@ tmai drive-test
 - `capture-test` counts only frames that changed, so drive around (or let
   someone drive) while it runs. It saves `runs\capture_test.png`, a blown-up copy of the 64x64
   picture the agent will see. Attach it in the thread if you can.
+- `focus-test` asks you to click on another window first, then drives and
+  captures while the game is in the background. It saves
+  `runs\focus_test.png`, which should show the game even if another window
+  covers it.
 - `drive-test` drives straight at full throttle for 3 attempts and reports how
   steady the 20 Hz timing is. Crashing into a wall is expected.

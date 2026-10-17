@@ -116,3 +116,27 @@ def test_restart_detection():
     parked = tel(race_time_ms=0, pos=(10.0, 10.0, 5.0), speed=0.0)
     assert not restart_detected(parked, parked, parked, 1.0)
     assert restart_detected(parked, parked, parked, 2.5)
+
+
+def test_crop_to_client_removes_title_bar_and_borders():
+    np = pytest.importorskip("numpy")
+    from tmai.game.capture import crop_to_client
+
+    frame = np.zeros((760, 1296), dtype=np.uint8)
+    bounds = (321, 129, 1617, 889)        # whole window on screen
+    client = (329, 168, 1609, 888)        # 1280x720 client area inside it
+    out = crop_to_client(frame, bounds, client)
+    assert out.shape == (720, 1280)
+    # frame captured at 2x scale: offsets scale too
+    out2 = crop_to_client(np.zeros((1520, 2592), dtype=np.uint8), bounds, client)
+    assert out2.shape == (1440, 2560)
+    # nonsense rectangles leave the frame untouched
+    assert crop_to_client(frame, (0, 0, 0, 0), client).shape == frame.shape
+
+
+def test_capture_backend_validated():
+    from tmai.config import ConfigError, load_config
+
+    assert load_config()["env"]["capture_backend"] == "window"
+    with pytest.raises(ConfigError):
+        load_config(overrides=["env.capture_backend=gpu"])
