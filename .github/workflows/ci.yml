@@ -14,4 +14,6 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,dashboard]"
+      # CPU PyTorch so the trainer and end-to-end tests run instead of skipping.
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pytest -q

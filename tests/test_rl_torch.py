@@ -148,6 +148,35 @@ def test_trainer_runs_shutdown_hooks(tmp_path):
     assert (run_dir / "best_laps.jsonl").exists()
 
 
+def test_stop_request_reaches_a_paused_trainer(tmp_path):
+    """`tmai stop` and the dashboard's stop button must work while paused."""
+    import threading
+    import time
+
+    from tmai.rl.train import Trainer
+    from tmai.run.hooks import HookList, TrainerHooks
+    from tmai.run.shutdown import AgentLaps, ShutdownHook
+    from tmai.run.stop import read_status, request_stop
+
+    class PausedFor30s(TrainerHooks):
+        started = None
+
+        def should_pause(self):
+            self.started = self.started or time.monotonic()
+            return time.monotonic() - self.started < 30
+
+    cfg = small_cfg(tmp_path, warmup_steps=10, updates_per_step=1)
+    make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    shutdown = ShutdownHook(cfg, log=lambda *_: None, agent_laps=AgentLaps(tmp_path / "op" / "a" / "b" / "ai.txt"),
+                            replays_root=tmp_path / "replays")
+    threading.Timer(0.5, request_stop, (tmp_path / "default", "test")).start()
+    started = time.monotonic()
+    trainer.train(hooks=HookList(PausedFor30s(), shutdown))   # pausing hook first: every hook is still asked
+    assert time.monotonic() - started < 10
+    assert read_status(tmp_path / "default")["state"] == "stopped"
+
+
 def test_faster_lap_becomes_reference(tmp_path):
     from tmai.rl.train import Trainer
     from tmai.track.reference import ReferenceLine
