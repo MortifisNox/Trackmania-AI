@@ -213,10 +213,12 @@ def test_pace_baseline_follows_the_average_of_recent_laps():
     base.add_lap(line, xs / 8.0)                                          # 12.5 s lap: one is not enough
     assert base.lap_time_s == pytest.approx(10.0)
     base.add_lap(line, xs / 5.0)                                          # 20 s lap
-    assert base.from_recent_laps and base.lap_time_s == pytest.approx(16.25)
+    assert base.from_recent_laps and base.lap_time_s == pytest.approx(16.25)   # median of two = mean
     # 10 m in 1 s: 1.625 s for the baseline, but gains are capped at 0.2 s a step
     assert base.pace(0.0, 0.1, 1.0) == pytest.approx(0.2)
     assert base.pace(0.0, 0.01, 0.1) == pytest.approx(0.1625 - 0.1)
+    base.add_lap(line, xs / 10.0)                                         # laps of 12.5, 20 and 10 s
+    assert base.lap_time_s == pytest.approx(12.5)
     for lap in (xs / 10.0,) * 3:                                          # only the last 3 laps count
         base.add_lap(line, lap)
     assert base.lap_count == 3 and base.lap_time_s == pytest.approx(10.0)
@@ -236,3 +238,17 @@ def test_personal_best_bonus_at_the_finish():
         tr.reset(tel(pos=(0.0, 0.0, 0.0)))
         info = tr.step(tel(pos=(1.0, 0.0, 0.0), flags=fin, race_time_ms=lap))
         assert info.terms.get("personal_best") == (None if bonus is None else pytest.approx(bonus))
+
+
+def test_one_bad_lap_does_not_move_the_pace_baseline():
+    from tmai.track.baseline import PaceBaseline
+
+    xs = np.linspace(0, 100, 101)
+    line = np.stack([xs, 0 * xs, 0 * xs], 1)
+    base = PaceBaseline(ReferenceLine.from_positions(line, 1.0, xs / 10.0), laps=20, min_laps=5)
+    for _ in range(10):
+        base.add_lap(line, xs / 10.0)                                     # 10 s laps
+    crash = np.where(xs < 50, xs / 10.0, xs / 10.0 + 6.0)                 # lost 6 s halfway
+    base.add_lap(line, crash)
+    assert base.lap_time_s == pytest.approx(10.0)
+    assert base.pace(0.4, 0.6, 2.0) == pytest.approx(0.0)

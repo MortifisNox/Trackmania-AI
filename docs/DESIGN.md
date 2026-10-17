@@ -52,8 +52,8 @@ self-improving reference line.**
    best checkpoint split. A pace term pays for every second gained on the
    pace baseline over each stretch of track (and charges for seconds lost),
    so going faster is rewarded point by point, not only at the finish. The
-   baseline is the average of the agent's last 20 finished laps, measured
-   point by point (the reference lap until 5 laps are in), so beating its own
+   baseline is the median of the agent's last 20 finished laps, measured
+   point by point, so one lap with a crash does not move it (the reference lap until 5 laps are in), so beating its own
    recent driving keeps paying once laps stop being personal bests. Replay
    stores the pace term's inputs and scores it against the current baseline
    every batch, so old laps are judged by today's standard. A finish faster
