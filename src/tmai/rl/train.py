@@ -290,7 +290,7 @@ class Trainer:
         return ep
 
     def add_baseline_lap(self, ep: dict) -> None:
-        """Finished laps join the pace baseline (the average of recent laps)."""
+        """Finished laps join the pace baseline (the median of recent laps)."""
         if ep["lap_ms"] is None:
             return
         pos = np.array([p for p, *_ in ep["trace"]], dtype=np.float64)

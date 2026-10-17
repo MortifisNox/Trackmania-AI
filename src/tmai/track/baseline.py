@@ -1,7 +1,8 @@
 """The pace baseline: race time at each point of the lap that the pace reward
-compares the car against. It is the average of the agent's last few finished
-laps, so beating its own recent driving pays even on laps that do not beat the
-best one; until enough laps are in, it is the reference lap itself."""
+compares the car against. It is the median of the agent's last few finished
+laps, point by point, so beating its own recent driving pays even on laps that
+do not beat the best one, and one lap with a crash or a spin does not drag it
+down; until enough laps are in, it is the reference lap itself."""
 
 from __future__ import annotations
 
@@ -71,7 +72,9 @@ class PaceBaseline:
         # (grid, times) swapped in as one object: the learner thread reads it
         # while the driving loop adds laps.
         if self.from_recent_laps:
-            self._curve = (self._grid, np.mean(np.stack(self._profiles), axis=0))
+            # Median, not mean: one lap that lost seconds to a crash would pull a
+            # mean up and make the next laps look better than they are.
+            self._curve = (self._grid, np.median(np.stack(self._profiles), axis=0))
         elif self.ref.times is not None:
             self._curve = (self._grid, np.asarray(self.ref.times, dtype=np.float64))
         else:
