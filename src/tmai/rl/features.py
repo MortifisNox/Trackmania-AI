@@ -22,10 +22,11 @@ def car_frame(vec, forward, up) -> np.ndarray:
     return np.array([v @ f, v @ left, v @ u])
 
 
-def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action) -> np.ndarray:
+def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, beams=None) -> np.ndarray:
     """48 floats, all roughly in -1..1:
     speed, gear, rpm, velocity in the car frame (3), on ground, wheel surface
-    materials (4), wheel slip (4), previous action (3), lookahead points (30)."""
+    materials (4), wheel slip (4), previous action (3), lookahead points (30);
+    then one 0..1 length per lidar beam when the lidar is on."""
     vel = car_frame(tel.vel, tel.dir, tel.up) / 50.0
     head = [
         tel.speed / 100.0, tel.gear / 5.0, tel.rpm / 11000.0, *vel,
@@ -39,6 +40,8 @@ def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action) -> np.ndarr
     if out.shape[0] != STATE_DIM:
         raise ValueError(f"state vector has {out.shape[0]} values, expected {STATE_DIM} "
                          "(env.lookahead_points must be 10)")
+    if beams is not None:
+        out = np.concatenate([out, np.asarray(beams, dtype=np.float32)])
     return np.clip(out, -5.0, 5.0)
 
 

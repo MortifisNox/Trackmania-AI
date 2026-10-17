@@ -31,6 +31,7 @@ class TMEnv:
         env = cfg["env"]
         self.game, self.tracker = game, tracker
         self.stack = env["frame_stack"]
+        self.lidar = bool(env["lidar_beams"])
         self.clock = clock or RealtimeClock(env["step_hz"])
         self.monitor = EpisodeMonitor(env["episode_timeout_s"], env["stuck_timeout_s"], env["stuck_speed_kmh"])
         self._frames: deque = deque(maxlen=self.stack)
@@ -40,8 +41,16 @@ class TMEnv:
 
     def _obs(self, frame, tel, lookahead) -> Obs:
         self._frames.append(frame)
-        state = state_vector(tel, lookahead, self._prev_action)
+        state = state_vector(tel, lookahead, self._prev_action, self._beams())
         return Obs(np.stack(self._frames), state, frame)
+
+    def _beams(self):
+        if not self.lidar:
+            return None
+        beams = getattr(self.game, "beams", None)
+        if beams is None:
+            raise RuntimeError("env.lidar_beams is on but the game gave no beam readings")
+        return beams
 
     def reset(self) -> Obs:
         self.game.pad.release()

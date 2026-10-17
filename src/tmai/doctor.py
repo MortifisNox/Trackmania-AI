@@ -71,8 +71,9 @@ def check_ram(cfg: dict, total_ram: int | None = None) -> Check:
         total_ram = psutil.virtual_memory().total
     frame = cfg["env"]["frame_size"]
     capacity = cfg["replay"]["capacity"]
-    need = budget.replay_bytes(capacity, frame)
-    suggested = budget.suggest_replay_capacity(total_ram, frame)
+    dims = budget.state_dim(cfg["env"])
+    need = budget.replay_bytes(capacity, frame, dims)
+    suggested = budget.suggest_replay_capacity(total_ram, frame, state_dim=dims)
     detail = (
         f"{total_ram / GIB:.0f} GiB RAM; replay of {capacity:,} needs {need / GIB:.1f} GiB, "
         f"suggested capacity {suggested:,}"

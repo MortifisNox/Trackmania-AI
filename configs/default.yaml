@@ -25,6 +25,20 @@ env:
   # window: capture the game window directly (works behind other windows).
   # screen: capture the screen area (game must be visible and on top).
   capture_backend: window
+  # camera: true adds a small CNN over the stacked game frames. Off by default:
+  # the agent drives from telemetry, the racing line and the lidar beams, which
+  # is lighter on the GPU and learns faster. Changing it needs a fresh run.
+  camera: false
+  # Screen lidar (as in TMRL): beams cast across the game image from
+  # lidar_origin (x, y as fractions of the picture, near the car) until they hit
+  # a border darker than lidar_dark, which tells the agent how much room it has
+  # ahead and to the sides. Only works on maps whose borders are darker than
+  # the road; `tmai capture-test` draws the beams so you can check. 0 = off.
+  # Changing it changes the inputs: re-record demos and start a fresh run.
+  lidar_beams: 19
+  lidar_width: 256            # beams are measured on a frame this many pixels wide
+  lidar_origin: [0.5, 0.9]
+  lidar_dark: 60              # 0..255 grayscale; darker pixels count as border
 
 track:
   reference_spacing_m: 1.0    # resolution of the reference line
