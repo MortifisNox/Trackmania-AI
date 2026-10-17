@@ -9,6 +9,23 @@ then learns from its own attempts, about 20 decisions per second. You watch it
 in a browser dashboard, and when you stop it you get a report and the best
 lap as an in-game replay.
 
+> **Offline only.** Train on local maps in Openplanet Developer mode, never
+> online and never on leaderboards. Openplanet's Developer mode needs Club
+> access. Read [docs/SAFE_USE.md](docs/SAFE_USE.md) before your first run.
+
+[![CI](https://github.com/MortifisNox/Trackmania-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/MortifisNox/Trackmania-AI/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Features**
+
+- Learns any local map from a few of your laps, then keeps improving on its own
+  (SAC with a DroQ critic ensemble, sized for a 6 GB laptop GPU).
+- Live browser dashboard: lap times, checkpoint splits, reward and loss
+  curves, with pause, resume, track reset and live setting changes.
+- Safe stop from the dashboard or Ctrl+C, which saves a final checkpoint,
+  writes a run report and saves the best lap as an in-game replay.
+- Resumes from where it stopped, for as long as you want to train.
+
 ## Start here
 
 | I want to... | Read |
@@ -24,7 +41,8 @@ lap as an in-game replay.
 
 ## Everyday use in short
 
-In PowerShell, with no `tmai` window open:
+In PowerShell, with no `tmai` window open (the commands here and in the docs
+use `D:\AI Projects\Trackmania AI`; use the folder you cloned into):
 
 ```powershell
 cd "D:\AI Projects\Trackmania AI"
@@ -82,9 +100,17 @@ median of its own last 20 laps, so it keeps improving after it beats your
 demo. Every 10th attempt is a test lap without experimenting. Details and the
 alternatives that were rejected: [docs/DESIGN.md](docs/DESIGN.md).
 
-## Development
+## Contributing
+
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the dev
+setup, how to run the tests, a map of the code and how PRs work. In short:
 
 ```bash
 pip install -e ".[dev,dashboard]"
 pytest
 ```
+
+## License
+
+[MIT](LICENSE). Trackmania is a trademark of Ubisoft Nadeo; this project is
+not affiliated with Ubisoft, Nadeo or Openplanet.
