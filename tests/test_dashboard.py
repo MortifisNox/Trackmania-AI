@@ -205,3 +205,29 @@ def test_dashboard_hook_drives_the_real_trainer(tmp_path):
         runner.join(timeout=60)
     finally:
         state.close()
+
+
+def test_episodes_before_learning_do_not_break_the_page(tmp_path):
+    """Losses are NaN until the first learner update; NaN is not valid JSON."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from tmai.dashboard.server import create_app
+
+    (tmp_path / "episodes.jsonl").write_text('{"episode": 1, "reward": 1.0, "critic_loss": NaN}\n')
+    state = RunState(tmp_path, 0)
+    hook = DashboardHook(tmp_path, state.link_port)
+    try:
+        hook.trainer = SimpleNamespace(metrics={})
+        hook.on_episode({"episode": 2, "reward": 2.0, "critic_loss": float("nan"), "q": float("inf")})
+        assert wait_for(lambda: len(state.snapshot()["episodes"]) == 2)
+        client = TestClient(create_app(state))
+        snap = client.get("/api/snapshot").json()
+        assert [e["critic_loss"] for e in snap["episodes"]] == [None, None] and snap["episodes"][1]["q"] is None
+        with client.websocket_connect("/ws") as ws:
+            json.loads(ws.receive_text())   # what the browser's JSON.parse sees
+        assert "NaN" not in (tmp_path / "episodes.jsonl").read_text().splitlines()[1]
+    finally:
+        hook.close()
+        state.close()

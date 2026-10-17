@@ -70,6 +70,15 @@ def udp_socket(bind_port: int | None = None) -> socket.socket:
     return sock
 
 
+def drop_non_finite(row: dict) -> dict:
+    """NaN/inf -> None, in place. Episodes before the first learner update have
+    NaN losses, and NaN is not valid JSON: the browser would reject the page."""
+    for k, v in row.items():
+        if isinstance(v, float) and not math.isfinite(v):
+            row[k] = None
+    return row
+
+
 def read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -224,7 +233,7 @@ class DashboardHook(TrainerHooks):
         return self._paused
 
     def on_episode(self, row: dict) -> None:
-        row = {"t": round(time.time(), 3), **row}
+        row = drop_non_finite({"t": round(time.time(), 3), **row})
         splits = self._splits()
         if splits is not None:
             row["splits_ms"] = list(splits.current)

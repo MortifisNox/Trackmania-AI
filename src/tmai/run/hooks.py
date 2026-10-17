@@ -57,7 +57,7 @@ class HookList(TrainerHooks):
         return any(h.should_reset_episode() for h in self.hooks)
 
     def should_pause(self) -> bool:
-        return any(h.should_pause() for h in self.hooks)
+        return any([h.should_pause() for h in self.hooks])   # ask every hook: some poll for a stop here
 
     def on_stop(self, trainer) -> None:
         errors = []

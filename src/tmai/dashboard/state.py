@@ -10,7 +10,7 @@ import uuid
 from collections import deque
 from pathlib import Path
 
-from tmai.dashboard.link import ParamSpec, decode, encode, read_jsonl, udp_socket
+from tmai.dashboard.link import ParamSpec, decode, drop_non_finite, encode, read_jsonl, udp_socket
 from tmai.run.stop import read_status, request_stop
 
 LINK_COMMANDS = ("pause", "resume", "reset_track", "save_checkpoint", "set_param")
@@ -159,6 +159,7 @@ class RunState:
 
     def _add_episode(self, row: dict) -> bool:
         """Returns True when this row started a new run."""
+        drop_non_finite(row)   # history written before this was fixed may hold NaN
         restarted = bool(self._episodes) and (row.get("episode") or 0) <= (self._episodes[-1].get("episode") or 0)
         if restarted:
             self._episodes.clear()

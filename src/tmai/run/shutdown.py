@@ -8,7 +8,8 @@ What it does, by hook point:
               restores the replay buffer from the last snapshot when the trainer
               resumed from a checkpoint, and marks the run as AI driving for the
               TMAI Ghost plugin
-  on_step     checks for a stop request (twice a second) and reports finished
+  on_step     checks for a stop request (twice a second; should_pause too,
+              so a paused run still stops) and reports finished
               lap times to the TMAI Ghost plugin
   on_episode  records each new best lap with its splits (best_laps.jsonl), keeps
               a best.pt copy of those weights, and takes periodic replay
@@ -133,6 +134,13 @@ class ShutdownHook(TrainerHooks):
             self.controller.poll()
         if info is not None and info.done == "finished" and tel is not None:
             self.agent_laps.add(tel.last_cp_time_ms or tel.race_time_ms)
+
+    def should_pause(self) -> bool:
+        # on_step does not run while paused or waiting for the game, so check
+        # for a stop request here too or `tmai stop` would wait for a resume.
+        if self.controller is not None:
+            self.controller.poll()
+        return False
 
     def on_episode(self, row: dict) -> None:
         t = self.trainer
