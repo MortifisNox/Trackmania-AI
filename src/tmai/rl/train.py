@@ -25,6 +25,7 @@ EPISODE_FIELDS = ["episode", "wall_time", "steps", "end", "race_time_s", "progre
                   "env_steps", "updates", "critic_loss", "actor_loss", "alpha", "q", "entropy",
                   "late_p99_ms"]
 EVAL_FIELDS = ["episode", "wall_time", "env_steps", "end", "lap_ms", "race_time_s", "progress", "best_eval_ms"]
+STALL_WARN_S = 0.1   # longest race-clock gap beyond one step that the log points out
 SYNC_EVERY = 20   # learner updates between refreshes of the driving policy
 NO_INPUT = np.array([0.0, -1.0, -1.0], dtype=np.float32)   # the previous action at the start
 
@@ -265,10 +266,13 @@ class Trainer:
         if reason == "finished":
             lap_ms = tel.last_cp_time_ms or tel.race_time_ms
         late = sorted(env.lateness) or [0.0]
+        # Race time the clock ran without a driving step (game or loop hitch, slow restart).
+        clock = [0] + [max(t, 0) for _, t, *_ in trace]
+        stall_s = max(0.0, max(np.diff(clock), default=0) / 1000.0 - 1.0 / self.cfg["env"]["step_hz"])
         ep = {"end": reason or "stopped", "steps": steps, "reward": total, "lap_ms": lap_ms,
               "race_time_s": tel.race_time_ms / 1000, "progress": info.progress if info else 0.0,
               "late_p99_ms": late[int(0.99 * (len(late) - 1))] * 1000, "trace": trace,
-              "deterministic": deterministic}
+              "deterministic": deterministic, "stall_s": stall_s}
         if lap_ms is not None:
             ep["lap"] = {"frames": frames, "tels": tels, "actions": actions}
         return ep
@@ -345,6 +349,8 @@ class Trainer:
             note = f"  lap {ep['lap_ms'] / 1000:.3f}s{note}"
         if ep.get("deterministic"):
             note += "  (test lap)"
+        if ep.get("stall_s", 0.0) >= STALL_WARN_S:
+            note += f"  STALL {ep['stall_s']:.2f}s (race clock ran without a driving step)"
         learning = "warming up" if self.online.transitions < self.warmup else f"{self.agent.updates} updates"
         self.log(f"ep {self.episodes:5d}  {ep['end']:9s}  {ep['race_time_s']:6.2f}s  "
                  f"progress {ep['progress'] * 100:5.1f}%  reward {ep['reward']:7.1f}  {learning}  "

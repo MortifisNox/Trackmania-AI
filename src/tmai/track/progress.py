@@ -44,7 +44,9 @@ class ProgressTracker:
         self._idx, self._s, _ = self.ref.project(tel.pos)
         self._max_s = self._s
         self._prev_speed = tel.speed_kmh
-        self._prev_time_ms = tel.race_time_ms
+        # Count race time from 0, so a run that only starts being driven after the
+        # clock started (a slow restart) is charged for the time already gone.
+        self._prev_time_ms = min(tel.race_time_ms, 0)
         self._done = None
         self.splits.reset()
 
@@ -70,19 +72,24 @@ class ProgressTracker:
         delta = s - self._s
         if abs(delta) > self.track["max_progress_jump_m"]:
             delta = 0.0  # teleport (respawn) or a shortcut across the line: no credit
+        # Race time that passed this step (none during the countdown). Normally one
+        # step's worth; more when the game or the loop stalled, and that time is
+        # as lost as any other, so the time and pace terms charge all of it.
+        dt = (max(tel.race_time_ms, 0) - max(self._prev_time_ms, 0)) / 1000.0
         pace = 0.0
-        if delta and self.ref.times is not None and self.rw["pace_per_s"]:
-            # Seconds gained on the reference lap over this stretch of track.
-            ref_dt = self.ref.time_at(s) - self.ref.time_at(self._s)
-            dt = (tel.race_time_ms - self._prev_time_ms) / 1000.0
-            pace = float(np.clip(ref_dt - dt, -0.2, 0.2))
+        if self.ref.times is not None and self.rw["pace_per_s"] and (delta or dt > 0):
+            # Seconds gained on the reference lap over this stretch of track. Gains
+            # are capped against projection glitches; losses are capped only by
+            # the time that really passed.
+            ref_dt = self.ref.time_at(s) - self.ref.time_at(self._s) if delta else 0.0
+            pace = float(np.clip(ref_dt - dt, -max(0.2, dt), 0.2))
         self._prev_time_ms = tel.race_time_ms
         self._idx, self._s = idx, s
         self._max_s = max(self._max_s, s)
 
         terms = {
             "progress": self.rw["progress_per_m"] * delta,
-            "time": -self.rw["time_penalty"],
+            "time": -self.rw["time_penalty"] * max(1.0, dt * self.env["step_hz"]),
         }
         if pace:
             terms["pace"] = self.rw["pace_per_s"] * pace
