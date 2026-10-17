@@ -52,6 +52,9 @@ def test_state_vector_and_controls():
     s = state_vector(tel(speed=50.0, vel=(0.0, 0.0, 50.0), dir=(0.0, 0.0, 1.0)), np.zeros(30), (0.0, 1.0, -1.0))
     assert s.shape == (STATE_DIM,) and s.dtype == np.float32
     assert s[3] == pytest.approx(1.0)                 # forward velocity in the car frame
+    assert s[18] == pytest.approx(0.0) and s[19] == pytest.approx(0.0)   # level car
+    nose_up = state_vector(tel(dir=(0.0, 0.5, 0.866), up=(0.0, 0.866, -0.5)), np.zeros(30), (0.0, 1.0, -1.0))
+    assert nose_up[18] == pytest.approx(0.5, abs=1e-3) and nose_up[19] == pytest.approx(0.0, abs=1e-3)
     assert to_controls((0.5, 1.0, -1.0)) == (0.5, 1.0, 0.0)
     assert np.allclose(from_controls(*to_controls((0.3, -0.2, 0.6))), (0.3, -0.2, 0.6), atol=1e-6)
 

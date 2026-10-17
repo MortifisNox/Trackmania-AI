@@ -43,8 +43,8 @@ env:
   # Changing it changes the inputs: re-record demos and start a fresh run.
   lidar_beams: 19
   lidar_width: 256            # beams are measured on a frame this many pixels wide
-  lidar_origin: [0.5, 0.9]
-  lidar_dark: 60              # 0..255 grayscale; darker pixels count as border
+  lidar_origin: [0.5, 0.6]    # just above the car with the default chase camera
+  lidar_dark: 90              # 0..255 grayscale; darker pixels count as border
 
 track:
   reference_spacing_m: 1.0    # resolution of the reference line

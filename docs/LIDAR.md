@@ -24,9 +24,9 @@ image with the beams drawn in red and their end points in yellow, and prints
 the 19 lengths. Each beam should end on a track border. If they don't:
 
 - Beams all very short: the start point sits on the car or on something dark.
-  Move it up, for example `tmai --set env.lidar_origin=[0.5,0.8] capture-test`.
+  Move it up, for example `tmai --set env.lidar_origin=[0.5,0.55] capture-test`.
 - Beams pass through the borders: the borders are lighter than `lidar_dark`.
-  Raise it, for example `tmai --set env.lidar_dark=90 capture-test`.
+  Raise it, for example `tmai --set env.lidar_dark=110 capture-test`.
 - Beams stop on the road: the road is darker than `lidar_dark`. Lower it.
 
 Put the values that work into your own config file so every command uses them.
@@ -51,7 +51,7 @@ tmai --set run.name=lidar train
 | key | default | meaning |
 | --- | --- | --- |
 | `env.lidar_beams` | 19 | number of beams (0 turns the lidar off) |
-| `env.lidar_origin` | [0.5, 0.9] | where the beams start, as x and y fractions of the picture |
-| `env.lidar_dark` | 60 | grayscale level (0..255) below which a pixel counts as border |
+| `env.lidar_origin` | [0.5, 0.6] | where the beams start, as x and y fractions of the picture |
+| `env.lidar_dark` | 90 | grayscale level (0..255) below which a pixel counts as border |
 | `env.lidar_width` | 256 | width in pixels of the frame the beams are measured on |
 | `env.camera` | false | true adds the CNN over the camera frames back |
