@@ -1,0 +1,27 @@
+name: Release
+
+# Pushing a tag like v0.1.0 publishes a GitHub release whose notes come from
+# docs/releases/<tag>.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "Missing $notes: write the release notes there before tagging." >&2
+            exit 1
+          fi
+          gh release create "$TAG" --title "$TAG" --notes-file "$notes" --verify-tag

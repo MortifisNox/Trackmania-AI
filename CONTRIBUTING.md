@@ -68,6 +68,13 @@ For the full Windows gaming setup see [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS
 If you tested on the real game, say which map and what you saw. That is the
 most useful thing a reviewer can get, since CI cannot run Trackmania.
 
+## Releases
+
+Write the notes in `docs/releases/vX.Y.Z.md`, bump `version` in
+`pyproject.toml` and `src/tmai/__init__.py`, merge, then push a tag
+`vX.Y.Z` on `main`. The Release workflow publishes the GitHub release from
+that notes file.
+
 ## Reporting bugs
 
 Open an issue with the bug template. Include the `tmai` command you ran, the
