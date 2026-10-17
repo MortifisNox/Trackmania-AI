@@ -50,11 +50,15 @@ downloads" page.
 
 ## 6. Project and PyTorch
 
-In PowerShell:
+In PowerShell (these commands also work if the folder already has files in it):
 
 ```powershell
 cd "D:\AI Projects\Trackmania AI"
-git clone https://github.com/MortifisNox/Trackmania-AI.git .
+git init
+git remote add origin https://github.com/MortifisNox/Trackmania-AI.git
+git fetch origin
+git checkout -b main origin/main
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # once, answer Y; lets the venv activate
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -62,15 +66,12 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 pip install -e ".[game,dashboard,dev]"
 ```
 
-If the folder already has files, clone into a subfolder instead
-(`git clone ... Trackmania-AI` and `cd Trackmania-AI`).
+Check that the prompt starts with `(.venv)` before the `pip` lines. Without it,
+packages go into your global Python instead of the project.
 
 Installing `vgamepad` opens the **ViGEmBus** driver installer (the virtual Xbox
 360 controller the agent drives with). Accept it. If it does not appear, install
 ViGEmBus from its GitHub releases page and reboot.
-
-If `Activate.ps1` is blocked, run once:
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 ## 7. Game settings
 
