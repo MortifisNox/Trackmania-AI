@@ -41,7 +41,9 @@ at the end of the report and in `control/status.json`.
 
 `tmai train` again with the same `run.name` resumes from the last checkpoint
 and refills the replay buffer from the last snapshot, so learning carries on
-without a new warm-up. Snapshots are also taken every `replay.snapshot_every_min`
+without a new warm-up. The pace baseline's recent laps are saved with the
+checkpoint too, so the `baseline` in the log carries on instead of starting
+over. Snapshots are also taken every `replay.snapshot_every_min`
 minutes in the background (the driver is paused for well under a millisecond
 at a time). A damaged `latest.pt` is replaced by the newest intact copy before
 loading, and a damaged snapshot falls back to the previous one.
