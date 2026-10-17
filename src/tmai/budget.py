@@ -4,7 +4,7 @@ from __future__ import annotations
 
 # Per transition: one uint8 frame (stacks are rebuilt from neighbouring frames),
 # a float32 state vector, a 3-float action, reward, done flag and episode index.
-STATE_DIM = 48       # without lidar beams
+STATE_DIM = 50       # without lidar beams
 ACTION_DIM = 3
 
 
