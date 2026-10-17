@@ -58,9 +58,6 @@ class FakeGame:
         self.pad.last = controls
         return controls
 
-    def take_input_interruption(self):
-        return None
-
     def _tel(self):
         flags = PLAYING | (protocol.FLAG_FINISHED if self.x >= LENGTH else 0)
         speed = 5.0 + 20.0 * self.pad.last[1]
