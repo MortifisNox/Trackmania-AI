@@ -7,7 +7,47 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 Always train **offline, on a local map, in Openplanet Developer mode**. Never
 online. The full rules are in [SAFE_USE.md](SAFE_USE.md).
 
-## The five steps
+## One click
+
+Double-click **`start_training.bat`** in the repo folder. It:
+
+1. updates the code (`git pull`, and `pip install` when something new came in),
+2. reinstalls the game plugins,
+3. lists the in-game checks and waits for you to press Enter,
+4. records your demo laps first if this map has none yet,
+5. starts the dashboard in its own window and opens it in your browser,
+6. starts training.
+
+The first time, it creates **`tmai_settings.json`** from
+[tmai_settings.example.json](../tmai_settings.example.json) and opens it in
+Notepad. Write your map in it, save, and double-click again. The settings
+you will usually touch:
+
+| Setting | What to write |
+|---|---|
+| `map_name` | the map's name as the game shows it, e.g. `"Test1"` |
+| `run_name` | the folder under `runs\` for this training; leave `""` to use the map name, so every map keeps its own run. Your Test1 training from before the one-click start is in `runs\default`: write `"default"` here to continue it |
+| `map_has_checkpoints` | `true` or `false` |
+| `restart_button` | `"auto"` picks `BACK` (Give up, which you bind to View/Back in **Settings > Controls**) on maps with checkpoints and `B` on maps without; or name a button: `B`, `BACK`, `START`, `X`, `Y`, `A`, `LB`, `RB`, `DPAD_UP`... |
+| `fresh_start` | `true` once to start the run over; set it back to `false` after |
+| `train_minutes` | a number to stop by itself after that long, `null` to train until you stop it |
+| `extra_settings` | any other setting from [configs/default.yaml](../configs/default.yaml), e.g. `{"train.batch_size": 128}` |
+
+The rest (skipping the update, the plugin copy, the Enter prompt, the
+dashboard or the browser) are explained in the file's `_help` section. The
+file is yours: git ignores it, so `git pull` never overwrites it. A typo in
+a setting name or value stops the start with a message saying which one.
+
+Stopping is the same as below: **Ctrl+C** once in the training window, or
+**Stop safely** on the dashboard. The results are in `runs\<run_name>\`.
+
+The same settings work with any command through `--settings`, for example
+`tmai --settings tmai_settings.json stop` or
+`tmai --settings tmai_settings.json report`.
+
+## The five steps by hand
+
+What `start_training.bat` does, if you prefer to type it.
 
 ### 1. Get the latest code
 

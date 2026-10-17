@@ -24,38 +24,28 @@ lap as an in-game replay.
 
 ## Everyday use in short
 
-In PowerShell, with no `tmai` window open:
+Double-click **`start_training.bat`**. The first time it creates
+`tmai_settings.json` and opens it: write your map name (and whether it has
+checkpoints), save, and double-click again. From then on one click updates
+the code, reinstalls the plugins, starts the dashboard at
+<http://127.0.0.1:8080> and trains. Stop with **Ctrl+C** (once, then wait)
+or the dashboard's **Stop safely** button; the report is in
+`runs\<run name>\report\report.html`.
 
-```powershell
-cd "D:\AI Projects\Trackmania AI"
-.\.venv\Scripts\Activate.ps1
-git pull
-pip install -e ".[game,dashboard,dev]"
-tmai install-plugin
-```
-
-In the game: **F3 > Developer > (Re)load plugin**, for **TMAI Telemetry**
-and **TMAI Ghost**. Start your map from local play, ghosts off. Then:
-
-```powershell
-tmai --set run.track=Test1 --set env.restart_button=BACK train
-```
-
-Watch it with `tmai dashboard` in a second window, at
-<http://127.0.0.1:8080>. Stop it with **Ctrl+C** (once, then wait) or the
-dashboard's **Stop safely** button. The report is in
-`runs\default\report\report.html`.
-
-Always offline, on a local map, in Openplanet Developer mode. Never online.
+In the game: offline, Openplanet Developer mode, ghosts off, map started
+from local play. Never online. The step-by-step version and every setting:
+[docs/EVERYDAY_USE.md](docs/EVERYDAY_USE.md).
 
 ## All commands
 
 `tmai --help` lists them too. Any setting in
 [configs/default.yaml](configs/default.yaml) can be changed for one command
-with `--set section.key=value`.
+with `--set section.key=value`, and `--settings tmai_settings.json` applies
+your settings file to any command.
 
 | Command | What it does |
 |---|---|
+| `tmai start` | what `start_training.bat` runs: plugins, dashboard and training from `tmai_settings.json` |
 | `tmai doctor` | checks drivers, CUDA, RAM, Openplanet and disk |
 | `tmai install-plugin` | copies the TMAI Telemetry and TMAI Ghost plugins into Openplanet |
 | `tmai get-map` | downloads the tmrl-test map into My Maps |

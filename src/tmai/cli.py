@@ -17,7 +17,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="YAML file merged over configs/default.yaml")
     parser.add_argument("--set", action="append", default=[], metavar="SECTION.KEY=VALUE",
                         help="override one config value (repeatable)")
+    parser.add_argument("--settings", metavar="JSON",
+                        help="apply a tmai_settings.json (map, run name, buttons) before --set")
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("start", help="one-click start from tmai_settings.json: plugins, dashboard, training")
     sub.add_parser("doctor", help="check this machine is ready to train")
     sub.add_parser("config", help="print the resolved configuration")
     sub.add_parser("install-plugin", help="copy the TMAI Telemetry and TMAI Ghost plugins into Openplanet")
@@ -50,13 +53,58 @@ def _openplanet_dir() -> Path:
     return Path(os.environ.get("USERPROFILE") or Path.home()) / "OpenplanetNext"
 
 
+def install_plugins() -> None:
+    from tmai.game.plugin import GHOST_PLUGIN_SRC, PLUGIN_SRC, install_plugin
+
+    for src in (PLUGIN_SRC, GHOST_PLUGIN_SRC):
+        print(f"installed to {install_plugin(_openplanet_dir(), src)}")
+
+
+def train(cfg: dict, minutes: float | None, fresh: bool) -> int:
+    from tmai.rl.train import Trainer
+    from tmai.run.checkpoint import prepare_resume
+    from tmai.run.hooks import HookList
+    from tmai.run.shutdown import ShutdownHook
+
+    if not fresh:
+        prepare_resume(Path(cfg["run"]["output_dir"]) / cfg["run"]["name"])
+    try:
+        trainer = Trainer(cfg, fresh=fresh)
+    except FileNotFoundError as exc:
+        print(exc)
+        return 1
+    from tmai.dashboard.link import DashboardHook
+
+    return trainer.train(minutes, hooks=HookList(ShutdownHook(cfg), DashboardHook.from_config(cfg)))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    from tmai import launch
+
+    settings_path = args.settings
+    if settings_path is None and args.command == "start":
+        settings_path = launch.SETTINGS_FILE
+        if not launch.ensure_settings_file(settings_path):
+            print(f"created {settings_path}; write your map name and buttons in it, then start again")
+            return 1
+    settings, overrides = None, []
+    if settings_path is not None:
+        settings_path = Path(settings_path).resolve()
+        try:
+            settings = launch.load_settings(settings_path)
+        except (OSError, launch.SettingsError) as exc:
+            print(f"settings error: {exc}")
+            return 2
+        overrides = launch.to_overrides(settings)
     try:
-        cfg = load_config(args.config, args.set)
+        cfg = load_config(args.config, overrides + args.set)
     except ConfigError as exc:
         print(f"config error: {exc}")
         return 2
+
+    if args.command == "start":
+        return launch.start(cfg, settings, settings_path, train)
 
     if args.command == "config":
         print(json.dumps(cfg, indent=2))
@@ -70,10 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if any(c.status == FAIL for c in checks) else 0
 
     if args.command == "install-plugin":
-        from tmai.game.plugin import GHOST_PLUGIN_SRC, PLUGIN_SRC, install_plugin
-
-        for src in (PLUGIN_SRC, GHOST_PLUGIN_SRC):
-            print(f"installed to {install_plugin(_openplanet_dir(), src)}")
+        install_plugins()
         print("In game: F3 > Developer > (Re)load plugin > TMAI Telemetry and TMAI Ghost, or restart the game.")
         return 0
 
@@ -116,21 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
-        from tmai.rl.train import Trainer
-        from tmai.run.checkpoint import prepare_resume
-        from tmai.run.hooks import HookList
-        from tmai.run.shutdown import ShutdownHook
-
-        if not args.fresh:
-            prepare_resume(Path(cfg["run"]["output_dir"]) / cfg["run"]["name"])
-        try:
-            trainer = Trainer(cfg, fresh=args.fresh)
-        except FileNotFoundError as exc:
-            print(exc)
-            return 1
-        from tmai.dashboard.link import DashboardHook
-
-        return trainer.train(args.minutes, hooks=HookList(ShutdownHook(cfg), DashboardHook.from_config(cfg)))
+        return train(cfg, args.minutes, args.fresh)
 
     from tmai.game import checks
 
