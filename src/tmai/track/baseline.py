@@ -43,6 +43,16 @@ class PaceBaseline:
         self._profiles.append(self._profile(pos, times))
         self._rebuild()
 
+    def state(self) -> list:
+        """The recent laps, for the checkpoint, so a resumed run keeps its baseline."""
+        return [(pos.copy(), times.copy()) for pos, times in self._traces]
+
+    def load_state(self, laps) -> None:
+        self._traces.clear()
+        for pos, times in laps or []:
+            self._traces.append((np.asarray(pos, dtype=np.float64), np.asarray(times, dtype=np.float64)))
+        self.set_ref(self.ref)
+
     @property
     def lap_count(self) -> int:
         return len(self._profiles)
