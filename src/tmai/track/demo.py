@@ -11,7 +11,7 @@ import numpy as np
 from tmai.game.clock import RealtimeClock
 from tmai.game.protocol import Telemetry
 
-FIELDS = ("pos", "vel", "dir", "up", "speed", "gear", "rpm", "race_time_ms",
+FIELDS = ("flags", "pos", "vel", "dir", "up", "speed", "gear", "rpm", "race_time_ms",
           "cp_count", "last_cp_time_ms", "wheel_material", "wheel_slip")
 
 

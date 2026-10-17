@@ -46,6 +46,11 @@ class ProgressTracker:
         self._done = None
         self.splits.reset()
 
+    def lookahead(self, tel: Telemetry) -> np.ndarray:
+        """Reference points ahead of the car's current progress, in its frame."""
+        return self.ref.lookahead(tel.pos, tel.dir, tel.up, self._s,
+                                  self.env["lookahead_points"], self.env["lookahead_spacing_m"])
+
     @property
     def ended(self) -> str | None:
         return self._done

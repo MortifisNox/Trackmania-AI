@@ -33,6 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("build-reference", help="rebuild run.track's reference line from its fastest demo")
     p = sub.add_parser("progress-test", help="drive yourself and watch progress, reward and splits")
     p.add_argument("--seconds", type=float, default=60.0)
+    p = sub.add_parser("train", help="let the agent learn run.track (Ctrl+C stops and saves)")
+    p.add_argument("--minutes", type=float, default=None, help="stop after this long (default: until Ctrl+C)")
+    p.add_argument("--fresh", action="store_true", help="ignore the run's last checkpoint and start over")
     p = sub.add_parser("drive-test", help="drive full throttle at 20 Hz and report timing")
     p.add_argument("--episodes", type=int, default=3)
     return parser
@@ -84,6 +87,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build-reference":
             return commands.build_reference(cfg)
         return commands.progress_test(cfg, args.seconds)
+
+    if args.command == "train":
+        from tmai.rl.train import Trainer
+
+        try:
+            trainer = Trainer(cfg, fresh=args.fresh)
+        except FileNotFoundError as exc:
+            print(exc)
+            return 1
+        return trainer.train(args.minutes)
 
     from tmai.game import checks
 

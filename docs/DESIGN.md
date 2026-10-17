@@ -72,6 +72,9 @@ self-improving reference line.**
 ```
 
 - **Two processes** so a slow gradient step never delays a control step.
+  Phase 3 starts with a learner *thread* (PyTorch releases the GIL in GPU
+  work) and prints control-step lateness per run; it moves to a process if
+  that lateness is too high on the laptop.
 - **Replay buffer in system RAM** as uint8 frames stored once (stacks rebuilt
   on sampling): ~4.2 KB per transition, 500k transitions ≈ 2 GB. `tmai doctor`
   suggests a capacity for your RAM.

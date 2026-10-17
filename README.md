@@ -13,7 +13,7 @@ the game on the same machine.
 
 ## Status
 
-Phase 2 (track model and reward) in testing: [docs/PHASE2_TESTING.md](docs/PHASE2_TESTING.md).
+Phase 3 (the learner) in testing: [docs/PHASE3_TESTING.md](docs/PHASE3_TESTING.md).
 
 ```powershell
 tmai doctor           # check drivers, CUDA, RAM, Openplanet, disk
@@ -26,6 +26,7 @@ tmai focus-test       # drive and capture while the game is in the background
 tmai drive-test       # full-throttle loop at 20 Hz with timing report
 tmai --set run.track=MyMap record-demo     # record your laps, build the reference line
 tmai --set run.track=MyMap progress-test   # live progress, reward and splits
+tmai --set run.track=MyMap train            # the agent learns the map (Ctrl+C saves)
 tmai --set env.restart_button=BACK config   # override any value
 ```
 
