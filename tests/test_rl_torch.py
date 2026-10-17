@@ -109,6 +109,35 @@ def test_trainer_train_loop_writes_csv(tmp_path):
     assert (tmp_path / "default" / "checkpoints" / "latest.pt").exists()
 
 
+def test_train_loop_survives_restart_errors(tmp_path, monkeypatch):
+    """A restart that times out is retried; one that respawns at a checkpoint
+    stops training cleanly (both go through the loop's except clauses)."""
+    from tmai.game.interface import CheckpointRespawn
+    from tmai.rl import train as train_mod
+    from tmai.rl.train import Trainer
+
+    class FlakyGame(FakeGame):
+        calls = 0
+
+        def restart(self):
+            self.calls += 1
+            if self.calls == 2:
+                raise TimeoutError("menu up")
+            if self.calls == 4:
+                raise CheckpointRespawn("respawned at a checkpoint")
+            return super().restart()
+
+    cfg = small_cfg(tmp_path, warmup_steps=10, updates_per_step=1)
+    make_track(tmp_path, cfg, with_demo=False)
+    lines = []
+    game = FlakyGame()
+    trainer = Trainer(cfg, game=game, device=torch.device("cpu"), log=lines.append)
+    monkeypatch.setattr(train_mod.time, "sleep", lambda s: None)
+    trainer.train(minutes=1.0)
+    assert game.calls == 4
+    assert any("retrying" in line for line in lines) and any("stopping: respawned" in line for line in lines)
+
+
 def test_trainer_runs_shutdown_hooks(tmp_path):
     from tmai.rl.train import Trainer
     from tmai.run.hooks import HookList, TrainerHooks
