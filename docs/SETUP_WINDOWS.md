@@ -95,6 +95,12 @@ the game should be light and consistent:
   **High-performance NVIDIA processor**. On Optimus laptops this matters.
 - Raise the back of the laptop for airflow during long runs.
 - Turn on Focus assist / Do not disturb, and set sleep to "Never" while plugged in.
+- You can use the laptop while the agent trains. Windows sees the agent's
+  virtual pad as a real Xbox controller, so `env.input_guard: shell` (the
+  default) holds the pad neutral while Alt or the Windows key is held and
+  while Alt+Tab, Task View, Start, search, Game Bar or a store app is in
+  front; the current attempt ends as `blocked` and the next one starts once
+  you leave that menu. Set `game` to drive only while the game is in front.
 
 ## 9. Check everything
 
