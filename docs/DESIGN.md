@@ -41,8 +41,8 @@ self-improving reference line.**
    agent's own experience. This removes the long random-driving phase.
 3. **Observations.** A state vector: from the Openplanet plugin, speed, gear,
    RPM, wheel contact and surface material, wheel slip, velocity in the car
-   frame, pitch and roll, and the previous action; 10 points of the reference
-   line ahead of the car, in 3D, so slopes and ramps ahead show up as height; and 19 screen-lidar beams (as in TMRL) measuring how far the track
+   frame and the previous action; 10 points of the reference line ahead of the
+   car; and 19 screen-lidar beams (as in TMRL) measuring how far the track
    border is in each direction ahead (see [LIDAR.md](LIDAR.md)). The camera
    image is off by default; `env.camera: true` adds a CNN over 4 stacked 64x64
    grayscale frames with random-shift augmentation (DrQ).

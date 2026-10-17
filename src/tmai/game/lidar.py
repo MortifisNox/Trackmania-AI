@@ -16,7 +16,7 @@ def wide_size(width: int, height: int, lidar_width: int) -> tuple[int, int]:
 
 
 class Lidar:
-    def __init__(self, beams: int, origin=(0.5, 0.6), dark: int = 90, hits: int = 2):
+    def __init__(self, beams: int, origin=(0.5, 0.9), dark: int = 60, hits: int = 2):
         """`beams` spread evenly from straight left (-90 deg) through straight up
         the screen to straight right; `origin` is (x, y) as fractions of the
         image; a beam stops at the first `hits` pixels in a row darker than `dark`."""
