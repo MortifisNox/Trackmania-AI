@@ -150,7 +150,7 @@ class Trainer:
         if pending is not None:
             self.policy.load(pending)
 
-    def run_episode(self, env: TMEnv) -> dict:
+    def run_episode(self, env: TMEnv, hooks=None) -> dict:
         obs = env.reset()
         with self.replay_lock:
             self.online.start_episode()
@@ -160,6 +160,8 @@ class Trainer:
             self._refresh_policy()
             action = self.policy.act(obs.frames, obs.state)
             nxt, reward, reason, info = env.step(action)
+            if hooks is not None:
+                hooks.on_step(env.last_tel, info)
             with self.replay_lock:
                 self.online.add(obs.frame, obs.state, action, reward, terminal=reason in TERMINAL)
             total += reward
@@ -176,7 +178,7 @@ class Trainer:
                 "race_time_s": tel.race_time_ms / 1000, "progress": info.progress if info else 0.0,
                 "late_p99_ms": late[int(0.99 * (len(late) - 1))] * 1000}
 
-    def _log_episode(self, ep: dict, writer, f) -> None:
+    def _log_episode(self, ep: dict, writer, f) -> dict:
         self.episodes += 1
         m = self.metrics
         row = {"episode": self.episodes, "wall_time": round(time.time(), 1), "steps": ep["steps"],
@@ -196,9 +198,26 @@ class Trainer:
         self.log(f"ep {self.episodes:5d}  {ep['end']:9s}  {ep['race_time_s']:6.2f}s  "
                  f"progress {ep['progress'] * 100:5.1f}%  reward {ep['reward']:7.1f}  {learning}  "
                  f"alpha {m.get('alpha', float('nan')):.3f}  late p99 {ep['late_p99_ms']:.0f} ms{note}")
+        return row
 
-    def train(self, minutes: float | None = None) -> int:
+    def _wait_while_paused(self, game, hooks) -> None:
+        if not hooks.should_pause():
+            return
+        game.pad.release()
+        self.log("paused")
+        while hooks.should_pause() and not self.stop.is_set():
+            time.sleep(0.2)
+        self.log("resumed")
+
+    def train(self, minutes: float | None = None, hooks=None) -> int:
+        """Drive and learn until stopped. `hooks` (tmai.run.hooks.TrainerHooks)
+        get on_start / on_step / on_episode / should_pause / on_stop; without
+        hooks the trainer only saves its checkpoint on the way out."""
         from tmai.game.interface import GameInterface
+        from tmai.run.hooks import TrainerHooks
+
+        own_save = hooks is None
+        hooks = hooks or TrainerHooks()
 
         game = self.game or GameInterface(self.cfg, capture=True)
         env = TMEnv(self.cfg, game, self.tracker)
@@ -209,6 +228,7 @@ class Trainer:
         last_ckpt = time.monotonic()
         every = self.cfg["train"]["checkpoint_every_min"] * 60
         self.log(f"training on {self.store.name!r} with {self.device}; Ctrl+C stops and saves")
+        hooks.on_start(self)
         learner.start()
         try:
             with open(csv_path, "a", newline="", encoding="utf-8") as f:
@@ -216,13 +236,16 @@ class Trainer:
                 if new_file:
                     writer.writeheader()
                 while not self.stop.is_set():
+                    self._wait_while_paused(game, hooks)
+                    if self.stop.is_set():
+                        break
                     try:
-                        ep = self.run_episode(env)
+                        ep = self.run_episode(env, hooks)
                     except TimeoutError as exc:
                         self.log(f"game not responding ({exc}); retrying")
                         time.sleep(2.0)
                         continue
-                    self._log_episode(ep, writer, f)
+                    hooks.on_episode(self._log_episode(ep, writer, f))
                     if time.monotonic() - last_ckpt >= every:
                         self.save_checkpoint()
                         last_ckpt = time.monotonic()
@@ -236,8 +259,10 @@ class Trainer:
             game.pad.release()
             if self.game is None:
                 game.close()
-            path = self.save_checkpoint()
-            self.log(f"saved {path}")
+            if own_save:
+                self.log(f"saved {self.save_checkpoint()}")
+            else:
+                hooks.on_stop(self)
         if self.learner_error is not None:
             raise self.learner_error
         return 0
