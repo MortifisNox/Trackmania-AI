@@ -17,8 +17,17 @@ def test_round_trip():
 
 
 def test_size_matches_plugin_layout():
-    # 4+2+2+4 header, 3 ints, 3+5 floats, 9+3 floats, 4 bytes, 4 floats
-    assert protocol.PACKET_SIZE == 12 + 12 + 32 + 48 + 4 + 16
+    # 4+2+2+4 header, 6 ints, 3+5 floats, 9+3 floats, 4 bytes, 4 floats
+    assert protocol.PACKET_SIZE == 12 + 24 + 32 + 48 + 4 + 16
+
+
+def test_race_time_prefers_game_clock_over_api_value():
+    assert protocol.pick_race_time(0, 10_000, 15_000, -1) == 5_000
+    assert protocol.pick_race_time(0, 10_000, 15_000, 12_000) == 2_000
+    assert protocol.pick_race_time(0, 10_000, 9_000, -1) == -1_000  # countdown
+    assert protocol.pick_race_time(4_321, 0, -1, -1) == 4_321
+    t = protocol.decode(protocol.encode(api_race_time_ms=0, start_time_ms=1000, net_now_ms=3500))
+    assert t.race_time_ms == 2500 and t.clocks == (0, 1000, 3500, -1)
 
 
 def test_rejects_bad_packets():

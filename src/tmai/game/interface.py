@@ -33,14 +33,15 @@ class GameInterface:
         """Restart the run and return the first telemetry once the car may move."""
         before = self.telemetry.wait(5.0)
         self.pad.press_restart()
-        deadline = time.monotonic() + timeout
+        pressed = time.monotonic()
+        deadline = pressed + timeout
         restarted = False
-        tel = before
+        prev = tel = before
         while time.monotonic() < deadline:
             tel = self.telemetry.wait(2.0, after_seq=tel.seq)
             if not restarted:
-                # A new run shows as the race clock jumping back near zero.
-                restarted = tel.playing and tel.race_time_ms < before.race_time_ms - 100
+                restarted = restart_detected(before, prev, tel, time.monotonic() - pressed)
+                prev = tel
                 continue
             if tel.race_time_ms >= 0:
                 return tel
@@ -54,3 +55,19 @@ class GameInterface:
         self.telemetry.close()
         if self.capture:
             self.capture.close()
+
+
+def _dist(a, b) -> float:
+    return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def restart_detected(before: Telemetry, prev: Telemetry, now: Telemetry, waited_s: float) -> bool:
+    """True once the game shows a fresh run after the restart button was pressed."""
+    if not now.playing:
+        return False
+    if now.race_time_ms < before.race_time_ms - 100:
+        return True  # race clock jumped back
+    if _dist(prev.pos, now.pos) > 3.0 and now.speed_kmh < 5:
+        return True  # teleported back to the start (or a checkpoint)
+    # Already parked at the start: nothing visibly changes, but the car is ready.
+    return waited_s > 2.0 and now.speed_kmh < 1 and _dist(before.pos, now.pos) < 1.0

@@ -97,3 +97,22 @@ def test_model_frame_shrinks_to_square():
 
     out = to_model_frame(np.full((720, 1280), 200, dtype=np.uint8), 64)
     assert out.shape == (64, 64) and out.dtype == np.uint8 and int(out.mean()) == 200
+
+
+def test_restart_detection():
+    from tmai.game.interface import restart_detected
+
+    before = tel(race_time_ms=8000, pos=(100.0, 10.0, 50.0), speed=20.0)
+    clock_reset = tel(race_time_ms=-1500, pos=(100.0, 10.0, 50.0), speed=20.0)
+    assert restart_detected(before, before, clock_reset, 0.1)
+    # race clock stuck at 0 (editor test drive): detect the teleport instead
+    b0 = tel(race_time_ms=0, pos=(100.0, 10.0, 50.0), speed=20.0)
+    spawn = tel(race_time_ms=0, pos=(10.0, 10.0, 5.0), speed=0.0)
+    assert restart_detected(b0, b0, spawn, 0.1)
+    # still driving, nothing happened yet
+    moving = tel(race_time_ms=0, pos=(101.0, 10.0, 50.0), speed=20.0)
+    assert not restart_detected(b0, b0, moving, 0.5)
+    # parked at the start already: accept after a short wait
+    parked = tel(race_time_ms=0, pos=(10.0, 10.0, 5.0), speed=0.0)
+    assert not restart_detected(parked, parked, parked, 1.0)
+    assert restart_detected(parked, parked, parked, 2.5)
