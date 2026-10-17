@@ -6,6 +6,7 @@ run:
   name: default
   output_dir: runs            # checkpoints, replay snapshots, reports, logs
   seed: 0
+  track: tmrl-test            # name used for runs/tracks/<track>/ (demos, reference line)
 
 env:
   step_hz: 20                 # control frequency (TMRL uses 20 Hz too)
@@ -24,6 +25,21 @@ env:
   # window: capture the game window directly (works behind other windows).
   # screen: capture the screen area (game must be visible and on top).
   capture_backend: window
+
+track:
+  reference_spacing_m: 1.0    # resolution of the reference line
+  max_progress_jump_m: 30.0   # bigger jumps in one step are respawns/cuts: no credit
+  wrong_way_m: 25.0           # end the attempt after falling this far behind the best progress
+  off_track_m: 0.0            # end when this far from the line (0 = off; tracks vary)
+  crash_speed_drop_kmh: 40.0  # speed lost in one step that counts as a crash
+
+reward:
+  progress_per_m: 0.1         # main signal: metres gained along the reference line
+  time_penalty: 0.01          # per step, so faster is always better
+  crash_penalty: 1.0
+  split_bonus_per_s: 1.0      # per second faster than the best split at a checkpoint
+  split_bonus_cap: 2.0
+  finish_bonus: 10.0
 
 model:
   algorithm: sac_droq         # SAC actor + dropout/LayerNorm Q ensemble (DroQ)
