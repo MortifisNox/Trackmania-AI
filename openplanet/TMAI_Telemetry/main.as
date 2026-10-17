@@ -5,7 +5,7 @@
 const string HOST = "127.0.0.1";
 const uint16 PORT = 9000;
 const uint MAGIC = 0x49414D54;  // "TMAI"
-const uint16 VERSION = 1;
+const uint16 VERSION = 2;
 
 const uint16 FLAG_PLAYER = 1;    // player API reachable, fields are valid
 const uint16 FLAG_PLAYING = 2;   // UI sequence is Playing (driving)
@@ -48,6 +48,15 @@ bool BuildPacket(MemoryBuffer@ buf)
 	if (seq == SGamePlaygroundUIConfig::EUISequence::Finish) flags |= FLAG_FINISHED;
 	if (vis !is null && vis.IsGroundContact) flags |= FLAG_GROUND;
 
+	// Race time sources differ by mode (CurrentRaceTime reads 0 in the editor's
+	// test drive), so send the raw clocks too and let Python pick a valid one.
+	int netNow = -1;
+	if (app.Network !is null && app.Network.PlaygroundClientScriptAPI !is null)
+		netNow = int(app.Network.PlaygroundClientScriptAPI.GameTime);
+	int rulesNow = -1;
+	CSmArenaRulesMode@ rules = cast<CSmArenaRulesMode>(app.PlaygroundScript);
+	if (rules !is null) rulesNow = int(rules.Now);
+
 	int cpCount = int(api.RaceWaypointTimes.Length);
 	int lastCp = cpCount > 0 ? int(api.RaceWaypointTimes[cpCount - 1]) : 0;
 
@@ -57,6 +66,9 @@ bool BuildPacket(MemoryBuffer@ buf)
 	buf.Write(flags);
 	buf.Write(g_seq++);
 	buf.Write(int(api.CurrentRaceTime));
+	buf.Write(int(api.StartTime));
+	buf.Write(netNow);
+	buf.Write(rulesNow);
 	buf.Write(cpCount);
 	buf.Write(lastCp);
 	WriteVec3(buf, api.Position);

@@ -37,6 +37,13 @@ into the project thread.
 then press the green flag (bottom right) to drive it. Keep the game windowed
 (1280x720) and fully on screen.
 
+You can use your own map instead, as long as it is a local map file (see
+SAFE_USE.md). If it has checkpoints, the default restart button **B** respawns
+at the last checkpoint instead of the start. In that case open the game's
+**Settings > Controls**, bind **Give up** (restart from the start) to a free
+gamepad button such as **View/Back**, and run the tests like
+`tmai --set env.restart_button=BACK gamepad-test`.
+
 ## 5. Run the checks
 
 Run each command, then click on the game window during the countdown so it has
@@ -52,7 +59,8 @@ tmai drive-test
 - `telemetry` should print lines with speed, gear and race time changing while
   you drive with your own controller or keyboard.
 - `gamepad-test` steers left and right, brakes, and restarts twice.
-- `capture-test` saves `runs\capture_test.png`, a blown-up copy of the 64x64
+- `capture-test` counts only frames that changed, so drive around (or let
+  someone drive) while it runs. It saves `runs\capture_test.png`, a blown-up copy of the 64x64
   picture the agent will see. Attach it in the thread if you can.
 - `drive-test` drives straight at full throttle for 3 attempts and reports how
   steady the 20 Hz timing is. Crashing into a wall is expected.

@@ -72,6 +72,7 @@ class ScreenCapture:
         self.region = client_region(self.hwnd)
         self._cam = dxcam.create(output_color="GRAY")
         self._last: np.ndarray | None = None
+        self.new_frames = 0
 
     def grab(self) -> np.ndarray:
         """Newest frame as (size, size) uint8. dxcam returns None when the
@@ -79,6 +80,7 @@ class ScreenCapture:
         frame = self._cam.grab(region=self.region)
         if frame is not None:
             self._last = to_model_frame(frame, self.size)
+            self.new_frames += 1
         if self._last is None:
             raise RuntimeError("no frame captured yet; is the game window on screen?")
         return self._last

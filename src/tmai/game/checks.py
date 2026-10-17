@@ -16,7 +16,7 @@ def _line(t) -> str:
         f"time {t.race_time_ms / 1000:7.2f}s  cps {t.cp_count:>2}  "
         f"{t.speed_kmh:6.1f} km/h  gear {t.gear}  rpm {t.rpm:6.0f}  "
         f"steer {t.steer:+.2f} gas {t.gas:.2f} brake {t.brake:.2f}  "
-        f"ground {'y' if t.on_ground else 'n'}  mats {t.wheel_material}"
+        f"ground {'y' if t.on_ground else 'n'}  mats {t.wheel_material}  clocks {t.clocks}"
     )
 
 
@@ -97,16 +97,18 @@ def capture_test(cfg: dict, out_dir: Path, frames: int = 120) -> int:
         x0, y0, x1, y1 = cap.region
         print(f"game window client area: {x1 - x0}x{y1 - y0} at ({x0}, {y0})")
         start = time.perf_counter()
-        for _ in range(frames):
+        new_before = cap.new_frames
+        while time.perf_counter() - start < 3.0:
             frame = cap.grab()
-        fps = frames / (time.perf_counter() - start)
+            time.sleep(0.002)
+        fps = (cap.new_frames - new_before) / (time.perf_counter() - start)
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / "capture_test.png"
         big = cv2.resize(frame, (frame.shape[1] * 6, frame.shape[0] * 6), interpolation=cv2.INTER_NEAREST)
         cv2.imwrite(str(path), big)
-        _check("capture rate", fps >= 40, f"{fps:.0f} frames/s (need 20, want 40+ for headroom)")
+        _check("capture rate", fps >= 20, f"{fps:.0f} new frames/s (need 20; drive or watch a replay meanwhile, unchanged frames are not counted)")
         print(f"saved what the agent sees to {path.resolve()}")
-        return 0 if fps >= 40 else 1
+        return 0 if fps >= 20 else 1
     finally:
         cap.close()
 
