@@ -19,15 +19,6 @@ def to_model_frame(frame: np.ndarray, size: int) -> np.ndarray:
     return cv2.resize(frame, (size, size), interpolation=cv2.INTER_AREA)
 
 
-def to_wide_frame(gray: np.ndarray, width: int) -> np.ndarray:
-    """Grayscale (H, W) -> `width` pixels wide, same aspect ratio, for the lidar."""
-    import cv2
-
-    from tmai.game.lidar import wide_size
-
-    return cv2.resize(gray, wide_size(gray.shape[1], gray.shape[0], width), interpolation=cv2.INTER_AREA)
-
-
 def _make_dpi_aware() -> None:
     # Without this, laptops at 125-150% display scaling report scaled window
     # coordinates and the capture box lands in the wrong place.
@@ -108,21 +99,19 @@ class WindowCapture:
     keeps working when other windows cover the game or it loses focus (but not
     when it is minimised: Windows stops rendering minimised windows)."""
 
-    def __init__(self, size: int, lidar_width: int = 0):
+    def __init__(self, size: int):
         import threading
 
         from windows_capture import WindowsCapture
 
         _make_dpi_aware()
         self.size = size
-        self.lidar_width = lidar_width
         self.hwnd = find_game_window()
         self.region = client_region(self.hwnd)
         self._bounds = window_bounds(self.hwnd)
         self._lock = threading.Lock()
         self._ready = threading.Event()
         self._last: np.ndarray | None = None
-        self._wide: np.ndarray | None = None
         self.new_frames = 0
         self.closed = False
 
@@ -136,12 +125,10 @@ class WindowCapture:
         bgra = crop_to_client(frame.frame_buffer, self._bounds, self.region)
         import cv2
 
-        gray = cv2.cvtColor(bgra, cv2.COLOR_BGRA2GRAY)
-        small = cv2.resize(gray, (self.size, self.size), interpolation=cv2.INTER_AREA)
-        wide = to_wide_frame(gray, self.lidar_width) if self.lidar_width else None
+        small = cv2.resize(cv2.cvtColor(bgra, cv2.COLOR_BGRA2GRAY), (self.size, self.size),
+                           interpolation=cv2.INTER_AREA)
         with self._lock:
             self._last = small
-            self._wide = wide
             self.new_frames += 1
         self._ready.set()
 
@@ -154,11 +141,6 @@ class WindowCapture:
         with self._lock:
             return self._last
 
-    def grab_wide(self) -> np.ndarray | None:
-        """The newest frame at lidar resolution (only with lidar_width set)."""
-        with self._lock:
-            return self._wide
-
     def close(self) -> None:
         try:
             self._control.stop()
@@ -166,26 +148,23 @@ class WindowCapture:
             pass
 
 
-def open_capture(size: int, backend: str, lidar_width: int = 0):
+def open_capture(size: int, backend: str):
     """`window` keeps working behind other windows; `screen` (dxcam) needs the
-    game visible on screen. Falls back to `screen` if window capture fails.
-    With `lidar_width`, a wider grayscale frame is kept too, for the beams."""
+    game visible on screen. Falls back to `screen` if window capture fails."""
     if backend == "window":
         try:
-            return WindowCapture(size, lidar_width)
+            return WindowCapture(size)
         except Exception as exc:  # missing package, old Windows build, etc.
             print(f"window capture unavailable ({type(exc).__name__}: {exc}); using screen capture")
-    return ScreenCapture(size, lidar_width)
+    return ScreenCapture(size)
 
 
 class ScreenCapture:
-    def __init__(self, size: int, lidar_width: int = 0):
+    def __init__(self, size: int):
         import dxcam
 
         _make_dpi_aware()
         self.size = size
-        self.lidar_width = lidar_width
-        self._wide: np.ndarray | None = None
         self.hwnd = find_game_window()
         self.region = client_region(self.hwnd)
         self._cam = dxcam.create(output_color="GRAY")
@@ -198,15 +177,10 @@ class ScreenCapture:
         frame = self._cam.grab(region=self.region)
         if frame is not None:
             self._last = to_model_frame(frame, self.size)
-            if self.lidar_width:
-                self._wide = to_wide_frame(frame[:, :, 0] if frame.ndim == 3 else frame, self.lidar_width)
             self.new_frames += 1
         if self._last is None:
             raise RuntimeError("no frame captured yet; is the game window on screen?")
         return self._last
-
-    def grab_wide(self) -> np.ndarray | None:
-        return self._wide
 
     def close(self) -> None:
         self._cam.release()

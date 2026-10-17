@@ -39,13 +39,11 @@ self-improving reference line.**
 2. **Demonstration seeding (RLPD-style).** You drive a few laps of each new
    track; every training batch draws 50% from those laps and 50% from the
    agent's own experience. This removes the long random-driving phase.
-3. **Observations.** A state vector: from the Openplanet plugin, speed, gear,
-   RPM, wheel contact and surface material, wheel slip, velocity in the car
-   frame and the previous action; 10 points of the reference line ahead of the
-   car; and 19 screen-lidar beams (as in TMRL) measuring how far the track
-   border is in each direction ahead (see [LIDAR.md](LIDAR.md)). The camera
-   image is off by default; `env.camera: true` adds a CNN over 4 stacked 64x64
-   grayscale frames with random-shift augmentation (DrQ).
+3. **Observations.** 4 stacked 64x64 grayscale frames (sees surface types and
+   walls) plus a state vector from the Openplanet plugin: speed, gear, RPM,
+   wheel contact and surface material, velocity in the car frame, previous
+   action, and 10 points of the reference line ahead of the car. Random-shift
+   image augmentation (DrQ) against overfitting.
 4. **Reward.** Progress along the reference line per step (as TMRL does), a
    penalty for wall contact and a time penalty, plus a bonus for beating the
    best checkpoint split. A pace term pays for every second gained on the

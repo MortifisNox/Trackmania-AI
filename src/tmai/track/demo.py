@@ -18,15 +18,12 @@ FIELDS = ("flags", "pos", "vel", "dir", "up", "speed", "gear", "rpm", "race_time
 class LapBuffer:
     def __init__(self):
         self.frames: list[np.ndarray] = []
-        self.beams: list[np.ndarray] = []
         self.rows: dict[str, list] = {k: [] for k in FIELDS}
         self.actions: list[tuple] = []
 
-    def add(self, frame: np.ndarray | None, t: Telemetry, beams: np.ndarray | None = None) -> None:
+    def add(self, frame: np.ndarray | None, t: Telemetry) -> None:
         if frame is not None:
             self.frames.append(frame)
-        if beams is not None:
-            self.beams.append(beams)
         for k in FIELDS:
             self.rows[k].append(getattr(t, k))
         self.actions.append((t.steer, t.gas, t.brake))
@@ -49,8 +46,6 @@ class LapBuffer:
         arrays["actions"] = np.asarray(self.actions, dtype=np.float32)
         if self.frames:
             arrays["frames"] = np.stack(self.frames).astype(np.uint8)
-        if self.beams and len(self.beams) == len(self.actions):
-            arrays["beams"] = np.stack(self.beams).astype(np.float32)
         np.savez_compressed(path, lap_time_ms=lap_time_ms, cp_times=np.asarray(self.cp_times()), **arrays)
         return path
 
@@ -73,10 +68,10 @@ def record_laps(game, folder: Path, laps: int, step_hz: float, log=print) -> lis
         if buf is None and t.playing and 0 <= t.race_time_ms < 1000:
             buf = LapBuffer()
         if buf is not None and t.playing and t.race_time_ms >= 0:
-            buf.add(frame, t, getattr(game, "beams", None))
+            buf.add(frame, t)
         if buf is not None and t.finished:
             lap_ms = t.last_cp_time_ms or t.race_time_ms
-            buf.add(frame, t, getattr(game, "beams", None))
+            buf.add(frame, t)
             path = buf.save(folder, lap_ms)
             saved.append(path)
             log(f"  lap {len(saved)}/{laps}: {lap_ms / 1000:.3f}s, {len(buf)} steps -> {path.name}")

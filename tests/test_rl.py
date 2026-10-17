@@ -26,7 +26,7 @@ def tel(**kw):
 def small_cfg(tmp_path, **train):
     over = [f"run.output_dir={tmp_path.as_posix()}", "run.track=T", "replay.capacity=2000",
             "train.batch_size=16", "model.hidden_dim=32", "model.encoder_channels=[8,8,8,8]",
-            "env.step_hz=1000", "env.episode_timeout_s=5", "env.camera=true", "env.lidar_beams=0"]
+            "env.step_hz=1000", "env.episode_timeout_s=5"]
     over += [f"train.{k}={v}" for k, v in train.items()]
     return load_config(None, over)
 

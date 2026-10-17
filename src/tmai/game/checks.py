@@ -91,11 +91,8 @@ def capture_test(cfg: dict, out_dir: Path, frames: int = 120) -> int:
     import cv2
 
     from tmai.game.capture import open_capture
-    from tmai.game.lidar import from_config
 
-    lidar = from_config(cfg["env"])
-    cap = open_capture(cfg["env"]["frame_size"], cfg["env"]["capture_backend"],
-                       cfg["env"]["lidar_width"] if lidar else 0)
+    cap = open_capture(cfg["env"]["frame_size"], cfg["env"]["capture_backend"])
     print(f"capture backend: {type(cap).__name__}")
     try:
         x0, y0, x1, y1 = cap.region
@@ -112,21 +109,6 @@ def capture_test(cfg: dict, out_dir: Path, frames: int = 120) -> int:
         cv2.imwrite(str(path), big)
         _check("capture rate", fps >= 20, f"{fps:.0f} new frames/s (need 20; drive or watch a replay meanwhile, unchanged frames are not counted)")
         print(f"saved what the agent sees to {path.resolve()}")
-        if lidar is not None:
-            wide = cap.grab_wide()
-            lengths = lidar.measure(wide)
-            scale = max(1, 1024 // wide.shape[1])
-            img = cv2.cvtColor(cv2.resize(wide, (wide.shape[1] * scale, wide.shape[0] * scale),
-                                          interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR)
-            for (x0, y0), (x1, y1) in lidar.endpoints(wide, lengths):
-                cv2.line(img, (x0 * scale, y0 * scale), (x1 * scale, y1 * scale), (0, 0, 255), 2)
-                cv2.circle(img, (x1 * scale, y1 * scale), 4, (0, 255, 255), -1)
-            beams_path = out_dir / "lidar_test.png"
-            cv2.imwrite(str(beams_path), img)
-            print("lidar beam lengths (left to right, 1 = clear):", " ".join(f"{v:.2f}" for v in lengths))
-            if statistics.median(lengths.tolist()) < 0.05:
-                print("most beams stop right away: env.lidar_origin is probably on the car or on a dark area")
-            print(f"saved the lidar beams to {beams_path.resolve()}: each red beam should stop at a track border")
         return 0 if fps >= 20 else 1
     finally:
         cap.close()

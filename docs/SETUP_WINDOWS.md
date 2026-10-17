@@ -75,8 +75,8 @@ ViGEmBus from its GitHub releases page and reboot.
 
 ## 7. Game settings
 
-The agent measures the track borders on a grayscale copy of the game window
-(the lidar beams) and reads telemetry, so the game should be light and consistent:
+The agent sees a small grayscale picture of the game window plus telemetry, so
+the game should be light and consistent:
 
 - Display mode **Windowed**, resolution **1280x720** (lower is fine).
 - Graphics preset **Very low / performance**, motion blur off, V-sync off.
