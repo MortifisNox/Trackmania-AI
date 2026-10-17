@@ -90,3 +90,32 @@ def test_demo_loads_with_rewards(tmp_path):
     assert n == 30 and total > 5.0
     assert buf.terminal[n - 1] == 1.0 and buf.reward[n - 1] > cfg["reward"]["finish_bonus"] - 1
     assert np.allclose(buf.action[0], (0.0, 1.0, -1.0))
+
+
+def test_replay_n_step_returns():
+    buf = ReplayBuffer(32, 4, stack=1, state_dim=STATE_DIM)
+    buf.start_episode()                       # ends in a terminal state (finish)
+    for i, r in enumerate([1.0, 2.0, 3.0, 4.0]):
+        buf.add(np.full((4, 4), i, np.uint8), np.zeros(STATE_DIM), np.zeros(3), r, terminal=i == 3)
+    buf.add(np.full((4, 4), 4, np.uint8), np.zeros(STATE_DIM))
+    buf.start_episode()                       # cut off (timeout): no terminal flag
+    for i, r in enumerate([1.0, 1.0]):
+        buf.add(np.full((4, 4), 10 + i, np.uint8), np.zeros(STATE_DIM), np.zeros(3), r)
+    buf.add(np.full((4, 4), 12, np.uint8), np.zeros(STATE_DIM))
+    batch = buf.sample(256, np.random.default_rng(0), n_step=3, gamma=0.5)
+    start, nxt = batch["frames"][:, -1, 0, 0], batch["next_frames"][:, -1, 0, 0]
+    expect = {   # first frame: (return, discount, next frame)
+        0: (1 + 0.5 * 2 + 0.25 * 3, 0.125, 3),
+        1: (2 + 0.5 * 3 + 0.25 * 4, 0.0, 4),     # reaches the finish: no bootstrap
+        2: (3 + 0.5 * 4, 0.0, 4),
+        3: (4.0, 0.0, 4),
+        10: (1 + 0.5 * 1, 0.25, 12),             # cut off: bootstraps from the last observation
+        11: (1.0, 0.5, 12),
+    }
+    assert set(start.tolist()) == set(expect)
+    for s, r, d, n in zip(start, batch["reward"], batch["discount"], nxt):
+        er, ed, en = expect[int(s)]
+        assert r == pytest.approx(er) and d == pytest.approx(ed) and n == en
+    one = buf.sample(64, np.random.default_rng(1), n_step=1, gamma=0.5)
+    assert np.all(one["next_frames"][:, -1, 0, 0] == one["frames"][:, -1, 0, 0] + 1)
+
