@@ -39,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("stop", help="ask the running training of run.name to stop and save")
     p.add_argument("--reason", default="tmai stop")
     sub.add_parser("report", help="rebuild run.name's run report from its saved files")
+    p = sub.add_parser("dashboard", help="open the training dashboard at http://127.0.0.1:8080")
+    p.add_argument("--demo", action="store_true", help="feed it a fake trainer to try it without the game")
     p = sub.add_parser("drive-test", help="drive full throttle at 20 Hz and report timing")
     p.add_argument("--episodes", type=int, default=3)
     return parser
@@ -82,6 +84,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"saved {path}")
         return 0
 
+    if args.command == "dashboard":
+        from tmai.dashboard.server import run_dashboard
+
+        return run_dashboard(cfg, args.demo)
+
     if args.command in ("record-demo", "build-reference", "progress-test"):
         from tmai.track import commands
 
@@ -121,7 +128,9 @@ def main(argv: list[str] | None = None) -> int:
         except FileNotFoundError as exc:
             print(exc)
             return 1
-        return trainer.train(args.minutes, hooks=HookList(ShutdownHook(cfg)))
+        from tmai.dashboard.link import DashboardHook
+
+        return trainer.train(args.minutes, hooks=HookList(ShutdownHook(cfg), DashboardHook.from_config(cfg)))
 
     from tmai.game import checks
 

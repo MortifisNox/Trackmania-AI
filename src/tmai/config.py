@@ -65,6 +65,8 @@ def validate(cfg: dict) -> None:
         raise ConfigError("env.capture_backend must be window or screen")
     if cfg["dashboard"]["host"] not in ("127.0.0.1", "localhost"):
         raise ConfigError("dashboard.host must stay on localhost")
+    if cfg["dashboard"]["port"] == cfg["dashboard"]["link_port"]:
+        raise ConfigError("dashboard.port and dashboard.link_port must differ")
 
 
 def load_config(path: str | Path | None = None, overrides: list[str] | None = None) -> dict:

@@ -76,5 +76,6 @@ gpu:
 
 dashboard:
   host: 127.0.0.1             # never expose to the network
-  port: 8080
+  port: 8080                  # web page: http://127.0.0.1:8080
+  link_port: 8081             # trainer <-> dashboard messages (localhost UDP)
   tensorboard: true

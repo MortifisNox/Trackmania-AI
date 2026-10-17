@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tmai dashboard</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3f0;
+  --surface-1: #fcfcfb;
+  --border: #e2e1dc;
+  --grid: #ecebe7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --series-1: #2a78d6;
+  --series-1-soft: rgba(42, 120, 214, 0.35);
+  --series-2: #eb6834;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --critical-text: #b42828;
+  --button: #ffffff;
+  --button-hover: #efeeea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2e2b;
+    --grid: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-1: #3987e5;
+    --series-1-soft: rgba(57, 135, 229, 0.4);
+    --series-2: #d95926;
+    --good-text: #4cc24c;
+    --critical-text: #e66767;
+    --button: #232321;
+    --button-hover: #2c2c2a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110;
+  --surface-1: #1a1a19;
+  --border: #2e2e2b;
+  --grid: #262624;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e86;
+  --series-1: #3987e5;
+  --series-1-soft: rgba(57, 135, 229, 0.4);
+  --series-2: #d95926;
+  --good-text: #4cc24c;
+  --critical-text: #e66767;
+  --button: #232321;
+  --button-hover: #2c2c2a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text-primary);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-1);
+  position: sticky; top: 0; z-index: 2;
+}
+h1 { font-size: 16px; margin: 0; font-weight: 600; }
+h2 { font-size: 13px; margin: 0 0 10px; font-weight: 600; color: var(--text-secondary);
+     text-transform: uppercase; letter-spacing: .04em; }
+.run { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warning); } .dot.bad { background: var(--critical); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+button {
+  font: inherit; color: var(--text-primary); background: var(--button); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--button-hover); }
+button:disabled { opacity: .45; cursor: default; }
+button.danger { color: var(--critical-text); }
+main { padding: 16px; display: grid; gap: 16px; max-width: 1500px; margin: 0 auto; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 14px; min-width: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.tile .label { font-size: 12px; color: var(--text-secondary); }
+.tile .value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .sub { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.row { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.bar { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+.bar .track { position: relative; height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+.bar .fill { position: absolute; top: 0; bottom: 0; background: var(--series-1); border-radius: 5px; }
+.bar .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--text-muted); }
+.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+th { text-align: right; font-weight: 500; color: var(--text-secondary); padding: 4px 6px; border-bottom: 1px solid var(--border); }
+td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+.faster { color: var(--good-text); } .slower { color: var(--critical-text); }
+.param { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.param:last-child { border-bottom: 0; }
+.param .head { display: flex; justify-content: space-between; gap: 8px; }
+.param .now { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.param .help { font-size: 12px; color: var(--text-muted); }
+.param .edit { display: flex; gap: 8px; align-items: center; }
+.param input[type=range] { flex: 1; min-width: 0; accent-color: var(--series-1); }
+.param input[type=number] { width: 110px; font: inherit; padding: 4px 6px; color: var(--text-primary);
+  background: var(--button); border: 1px solid var(--border); border-radius: 6px; }
+.charts { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.chart { position: relative; }
+.chart .title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.chart .title span:first-child { font-weight: 600; font-size: 13px; }
+.chart .latest { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.legend i { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 4px; }
+.legend i.pt { width: 7px; height: 7px; border-radius: 50%; }
+canvas { display: block; width: 100%; height: 180px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; display: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12); font-variant-numeric: tabular-nums; z-index: 1; }
+.log { font-size: 12px; color: var(--text-secondary); max-height: 160px; overflow: auto; }
+.log div { padding: 2px 0; }
+.empty { color: var(--text-muted); font-size: 13px; }
+a { color: var(--series-1); }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; display: none; z-index: 3; max-width: calc(100% - 32px); }
+@media (max-width: 600px) {
+  header { position: static; }
+  .controls { margin-left: 0; }
+  .charts, .row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Trackmania AI training</h1>
+    <div class="run" id="run">no run loaded</div>
+  </div>
+  <span class="pill"><span class="dot" id="conn-dot"></span><span id="conn">connecting to dashboard…</span></span>
+  <a id="report" href="/report" target="_blank" hidden>Run report</a>
+  <div class="controls">
+    <button id="btn-pause" data-cmd="pause">Pause</button>
+    <button id="btn-resume" data-cmd="resume">Resume</button>
+    <button data-cmd="reset_track">Reset track</button>
+    <button data-cmd="save_checkpoint">Save checkpoint</button>
+    <button class="danger" data-cmd="stop">Stop safely</button>
+  </div>
+</header>
+<main>
+  <section class="tiles">
+    <div class="card tile"><div class="label">Speed</div><div class="value" id="t-speed">–</div><div class="sub" id="t-gear">km/h</div></div>
+    <div class="card tile"><div class="label">Current lap</div><div class="value" id="t-race">–</div><div class="sub" id="t-progress">progress –</div></div>
+    <div class="card tile"><div class="label">Best lap</div><div class="value" id="t-best">–</div><div class="sub" id="t-best-ep">no finished lap yet</div></div>
+    <div class="card tile"><div class="label">Episodes</div><div class="value" id="t-eps">0</div><div class="sub" id="t-finish">–</div></div>
+    <div class="card tile"><div class="label">Driving steps</div><div class="value" id="t-steps">–</div><div class="sub" id="t-updates">updates –</div></div>
+  </section>
+
+  <section class="row">
+    <div class="card">
+      <h2>Inputs</h2>
+      <div class="bar"><span>Steer</span><div class="track"><div class="mid"></div><div class="fill" id="b-steer"></div></div><span class="num" id="n-steer">–</span></div>
+      <div class="bar"><span>Gas</span><div class="track"><div class="fill" id="b-gas"></div></div><span class="num" id="n-gas">–</span></div>
+      <div class="bar"><span>Brake</span><div class="track"><div class="fill" id="b-brake"></div></div><span class="num" id="n-brake">–</span></div>
+      <div class="bar"><span>RPM</span><div class="track"><div class="fill" id="b-rpm"></div></div><span class="num" id="n-rpm">–</span></div>
+    </div>
+    <div class="card">
+      <h2>Checkpoint splits</h2>
+      <table>
+        <thead><tr><th>Checkpoint</th><th>This lap</th><th>Best lap</th><th>Delta</th></tr></thead>
+        <tbody id="splits"><tr><td colspan="4" class="empty">waiting for the first checkpoint</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Hyperparameters</h2>
+      <div id="params"><div class="empty">shown once the trainer connects</div></div>
+    </div>
+  </section>
+
+  <section class="charts" id="charts"></section>
+
+  <section class="card">
+    <h2>Commands</h2>
+    <div class="log" id="log"><div class="empty">nothing sent yet</div></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const S = { snap: null, scalars: {}, episodes: [], best: null, params: [], trainer: {}, connected: false, tel: {} };
+const ROLL = 20;   // episodes in the rolling mean
+
+// ---------- formatting ----------
+function fmtTime(ms) {
+  if (ms == null || !isFinite(ms)) return "–";
+  const neg = ms < 0; ms = Math.abs(ms);
+  const m = Math.floor(ms / 60000), s = (ms % 60000) / 1000;
+  const txt = m ? `${m}:${s.toFixed(3).padStart(6, "0")}` : s.toFixed(3);
+  return (neg ? "-" : "") + txt;
+}
+function fmtNum(v) {
+  if (v == null || !isFinite(v)) return "–";
+  const a = Math.abs(v);
+  if (a !== 0 && (a < 1e-3 || a >= 1e6)) return v.toExponential(2);
+  if (a >= 1000) return Math.round(v).toLocaleString();
+  return (+v.toPrecision(4)).toString();
+}
+function fmtInt(v) { return v == null ? "–" : Math.round(v).toLocaleString(); }
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// ---------- charts ----------
+const charts = new Map();
+const CHART_ORDER = ["reward", "lap", "progress", "critic_loss", "actor_loss", "q", "alpha", "entropy"];
+const NICE = { reward: "Episode reward", lap: "Lap time (s)", progress: "Track progress per episode (%)",
+  critic_loss: "Critic loss", actor_loss: "Actor loss", q: "Q value", alpha: "Temperature (alpha)",
+  entropy: "Policy entropy", gpu_temp_c: "GPU temperature (°C)", vram_mb: "VRAM used (MB)" };
+
+function chart(key) {
+  if (charts.has(key)) return charts.get(key);
+  const el = document.createElement("div");
+  el.className = "card chart";
+  el.innerHTML = `<div class="title"><span></span><span class="latest"></span></div>
+    <div class="legend"></div><canvas></canvas><div class="tip"></div>`;
+  el.querySelector(".title span").textContent = NICE[key] || key;
+  const c = { key, el, canvas: el.querySelector("canvas"), tip: el.querySelector(".tip"),
+              latest: el.querySelector(".latest"), legend: el.querySelector(".legend"),
+              series: [], xLabel: "updates", hover: null };
+  c.canvas.addEventListener("mousemove", (e) => { c.hover = e.offsetX; draw(c); });
+  c.canvas.addEventListener("mouseleave", () => { c.hover = null; draw(c); });
+  charts.set(key, c);
+  // keep a stable order: known charts first, others alphabetical
+  const rank = (k) => { const i = CHART_ORDER.indexOf(k); return i < 0 ? 100 : i; };
+  const keys = [...charts.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const box = $("charts");
+  keys.forEach((k) => box.appendChild(charts.get(k).el));
+  return c;
+}
+
+function setLegend(c, items) {
+  c.legend.innerHTML = "";
+  if (items.length < 2) return;
+  for (const it of items) {
+    const s = document.createElement("span");
+    s.innerHTML = `<i class="${it.points ? "pt" : ""}"></i>`;
+    s.firstChild.style.background = css(it.color);
+    s.append(it.label);
+    c.legend.appendChild(s);
+  }
+}
+
+// Each series: {label, color (css var), points: bool, data: [[x, y], ...], fmt}
+function draw(c) {
+  const cv = c.canvas, dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w) return;
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const all = c.series.flatMap((s) => s.data);
+  if (!all.length) {
+    g.fillStyle = css("--text-muted"); g.font = "13px system-ui"; g.fillText("no data yet", 8, 20); return;
+  }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of all) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x0 === x1) { x0 -= 1; x1 += 1; }
+  if (y0 === y1) { y0 -= 1; y1 += 1; }
+  const pad = (y1 - y0) * 0.08; y0 -= pad; y1 += pad;
+  const L = 52, R = 8, T = 6, B = 22, pw = w - L - R, ph = h - T - B;
+  const sx = (x) => L + (x - x0) / (x1 - x0) * pw, sy = (y) => T + (1 - (y - y0) / (y1 - y0)) * ph;
+
+  // grid + axes (recessive)
+  g.font = "11px system-ui"; g.fillStyle = css("--text-muted"); g.strokeStyle = css("--grid"); g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = y0 + (y1 - y0) * i / 4, py = Math.round(sy(y)) + 0.5;
+    g.beginPath(); g.moveTo(L, py); g.lineTo(w - R, py); g.stroke();
+    g.textAlign = "right"; g.textBaseline = "middle"; g.fillText(fmtNum(y), L - 6, py);
+  }
+  g.textAlign = "center"; g.textBaseline = "top";
+  for (let i = 0; i <= 3; i++) {
+    const x = x0 + (x1 - x0) * i / 3;
+    g.textAlign = i === 0 ? "left" : i === 3 ? "right" : "center";
+    g.fillText(fmtInt(x), sx(x), h - B + 6);
+  }
+
+  for (const s of c.series) {
+    const col = css(s.color);
+    const d = thin(s.data, pw);
+    if (s.points) {
+      g.fillStyle = s.soft ? css(s.soft) : col;
+      const r = d.length > 300 ? 1.5 : 3;
+      for (const [x, y] of d) { g.beginPath(); g.arc(sx(x), sy(y), r, 0, 7); g.fill(); }
+    } else {
+      g.strokeStyle = col; g.lineWidth = 2; g.lineJoin = "round"; g.beginPath();
+      d.forEach(([x, y], i) => {
+        if (s.step && i) g.lineTo(sx(x), sy(d[i - 1][1]));
+        i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y));
+      });
+      if (s.step && d.length) g.lineTo(sx(x1), sy(d[d.length - 1][1]));
+      g.stroke();
+    }
+  }
+
+  // hover crosshair + tooltip
+  if (c.hover != null && c.hover >= L && c.hover <= w - R) {
+    const xv = x0 + (c.hover - L) / pw * (x1 - x0);
+    g.strokeStyle = css("--text-muted"); g.lineWidth = 1; g.beginPath();
+    g.moveTo(Math.round(c.hover) + 0.5, T); g.lineTo(Math.round(c.hover) + 0.5, T + ph); g.stroke();
+    const lines = [`${c.xLabel} ${fmtInt(xv)}`];
+    for (const s of c.series) {
+      const p = nearest(s.data, xv);
+      if (!p) continue;
+      g.fillStyle = css(s.color); g.strokeStyle = css("--surface-1"); g.lineWidth = 2;
+      g.beginPath(); g.arc(sx(p[0]), sy(p[1]), 4, 0, 7); g.fill(); g.stroke();
+      lines.push(`${s.label}: ${(s.fmt || fmtNum)(p[1])}` + (s.points ? ` (${c.xLabel} ${fmtInt(p[0])})` : ""));
+    }
+    c.tip.textContent = ""; lines.forEach((t, i) => { if (i) c.tip.append(document.createElement("br")); c.tip.append(t); });
+    c.tip.style.display = "block";
+    const tw = c.tip.offsetWidth;
+    c.tip.style.left = Math.min(Math.max(0, c.hover + 12 + cv.offsetLeft), c.el.clientWidth - tw - 4) + "px";
+    c.tip.style.top = (cv.offsetTop + 4) + "px";
+  } else c.tip.style.display = "none";
+}
+
+function thin(data, px) {   // keep min and max per pixel column
+  if (data.length <= px * 2) return data;
+  const out = [], per = data.length / px;
+  for (let i = 0; i < px; i++) {
+    const a = Math.floor(i * per), b = Math.min(data.length, Math.floor((i + 1) * per));
+    let lo = data[a], hi = data[a];
+    for (let j = a; j < b; j++) { if (data[j][1] < lo[1]) lo = data[j]; if (data[j][1] > hi[1]) hi = data[j]; }
+    if (lo[0] <= hi[0]) out.push(lo, hi); else out.push(hi, lo);
+  }
+  return out;
+}
+function nearest(data, x) {
+  if (!data.length) return null;
+  let lo = 0, hi = data.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (data[m][0] < x) lo = m; else hi = m; }
+  return Math.abs(data[lo][0] - x) <= Math.abs(data[hi][0] - x) ? data[lo] : data[hi];
+}
+
+// ---------- building chart data ----------
+function rebuildEpisodeCharts() {
+  const eps = S.episodes;
+  const x = (e, i) => e.episode ?? i + 1;
+  const reward = eps.filter((e) => e.reward != null).map((e, i) => [x(e, i), e.reward]);
+  const roll = []; let sum = 0;
+  reward.forEach((p, i) => { sum += p[1]; if (i >= ROLL) sum -= reward[i - ROLL][1]; roll.push([p[0], sum / Math.min(i + 1, ROLL)]); });
+  const rc = chart("reward"); rc.xLabel = "episode";
+  rc.series = [{ label: "each episode", color: "--series-1", soft: "--series-1-soft", points: true, data: reward },
+               { label: `mean of last ${ROLL}`, color: "--series-2", data: roll }];
+  setLegend(rc, rc.series);
+  rc.latest.textContent = roll.length ? `mean ${fmtNum(roll[roll.length - 1][1])}` : "";
+
+  const laps = eps.map((e, i) => [x(e, i), e.lap_ms]).filter((p) => p[1] != null).map(([a, b]) => [a, b / 1000]);
+  const best = []; let b = Infinity;
+  for (const p of laps) { if (p[1] < b) { b = p[1]; best.push([p[0], b]); } }
+  const lc = chart("lap"); lc.xLabel = "episode";
+  const sec = (v) => fmtTime(v * 1000);
+  lc.series = [{ label: "finished lap", color: "--series-1", soft: "--series-1-soft", points: true, data: laps, fmt: sec },
+               { label: "best so far", color: "--series-2", step: true, data: best, fmt: sec }];
+  setLegend(lc, lc.series);
+  lc.latest.textContent = `${laps.length} finished`;
+
+  const pc = chart("progress"); pc.xLabel = "episode";
+  pc.series = [{ label: "progress", color: "--series-1", points: true,
+                 data: eps.filter((e) => e.progress != null).map((e, i) => [x(e, i), e.progress * 100]) }];
+  [rc, lc, pc].forEach(draw);
+}
+function rebuildScalarChart(key) {
+  const c = chart(key); const data = S.scalars[key] || [];
+  c.series = [{ label: NICE[key] || key, color: "--series-1", data }];
+  c.latest.textContent = data.length ? `latest ${fmtNum(data[data.length - 1][1])}` : "";
+  draw(c);
+}
+let pending = new Set(), raf = 0;
+function schedule(key) { pending.add(key); if (!raf) raf = requestAnimationFrame(flush); }
+function flush() {
+  raf = 0;
+  const keys = pending; pending = new Set();
+  for (const k of keys) k === "@episodes" ? rebuildEpisodeCharts() : rebuildScalarChart(k);
+}
+window.addEventListener("resize", () => charts.forEach(draw));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => charts.forEach(draw));
+
+// ---------- panels ----------
+function renderTiles() {
+  const t = S.tel, eps = S.episodes, last = eps[eps.length - 1];
+  $("t-speed").textContent = t.speed_kmh != null ? Math.round(t.speed_kmh) : "–";
+  $("t-gear").textContent = t.gear != null ? `km/h · gear ${t.gear}` : "km/h";
+  $("t-race").textContent = fmtTime(t.race_time_ms);
+  $("t-progress").textContent = t.progress != null ? `progress ${(t.progress * 100).toFixed(1)}%` : "progress –";
+  $("t-best").textContent = S.best ? fmtTime(S.best.lap_ms) : "–";
+  $("t-best-ep").textContent = S.best ? `episode ${S.best.episode ?? "?"}` : "no finished lap yet";
+  const tr = S.trainer || {};
+  $("t-eps").textContent = fmtInt(tr.episodes ?? last?.episode ?? eps.length);
+  const fin = eps.slice(-100).filter((e) => e.lap_ms != null).length, n = Math.min(100, eps.length);
+  $("t-finish").textContent = n ? `${fin} of last ${n} finished` : "–";
+  $("t-steps").textContent = fmtInt(tr.env_steps ?? last?.env_steps);
+  $("t-updates").textContent = `updates ${fmtInt(tr.updates ?? last?.updates)}`;
+}
+function renderInputs() {
+  const t = S.tel;
+  const steer = t.steer ?? 0, w = Math.abs(steer) * 50;
+  const sb = $("b-steer"); sb.style.width = w + "%"; sb.style.left = (steer < 0 ? 50 - w : 50) + "%";
+  $("n-steer").textContent = t.steer != null ? steer.toFixed(2) : "–";
+  for (const k of ["gas", "brake"]) {
+    $("b-" + k).style.left = "0"; $("b-" + k).style.width = ((t[k] ?? 0) * 100) + "%";
+    $("n-" + k).textContent = t[k] != null ? t[k].toFixed(2) : "–";
+  }
+  $("b-rpm").style.left = "0"; $("b-rpm").style.width = Math.min(100, (t.rpm ?? 0) / 110) + "%";
+  $("n-rpm").textContent = t.rpm != null ? Math.round(t.rpm) : "–";
+}
+function renderSplits() {
+  const cur = S.tel.splits_ms || [], best = S.tel.best_splits_ms || S.best?.splits_ms || [];
+  const n = Math.max(cur.length, best.length), body = $("splits");
+  body.innerHTML = "";
+  if (!n) { body.innerHTML = `<tr><td colspan="4" class="empty">waiting for the first checkpoint</td></tr>`; return; }
+  for (let i = 0; i < n; i++) {
+    const tr = document.createElement("tr");
+    const d = cur[i] != null && best[i] != null ? cur[i] - best[i] : null;
+    const label = i === n - 1 && best.length === n ? "Finish" : `CP ${i + 1}`;
+    const cells = [label, fmtTime(cur[i]), fmtTime(best[i]), d == null ? "–" : (d > 0 ? "+" : d < 0 ? "−" : "±") + fmtTime(Math.abs(d))];
+    cells.forEach((v, j) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
+      if (j === 3 && d) td.className = d < 0 ? "faster" : "slower"; });
+    body.appendChild(tr);
+  }
+}
+function renderConn() {
+  const tr = S.trainer || {}, rs = S.runStatus || {}, dot = $("conn-dot");
+  const stopping = rs.state === "stopping";
+  let txt, cls;
+  if (!S.wsOpen) { txt = "dashboard offline, reconnecting…"; cls = "bad"; }
+  else if (stopping) { txt = `stopping safely: ${rs.phase || "…"}`; cls = "warn"; }
+  else if (rs.state === "stopped" || tr.state === "stopped") { txt = "training stopped, everything saved"; cls = "warn"; }
+  else if (!S.connected) { txt = "trainer not running"; cls = "warn"; }
+  else if (tr.paused) { txt = "trainer paused"; cls = "warn"; }
+  else { txt = `trainer ${tr.state || "running"}`; cls = "good"; }
+  $("conn").textContent = txt; dot.className = "dot " + cls;
+  $("report").hidden = !(rs.state === "stopped" && rs.report);
+  const live = S.wsOpen && S.connected && !stopping && tr.state !== "stopped";
+  document.querySelectorAll("[data-cmd]").forEach((b) => b.disabled = !live);
+  if (live) { $("btn-pause").disabled = !!tr.paused; $("btn-resume").disabled = !tr.paused; }
+  $("run").textContent = S.runDir || "no run loaded";
+}
+function renderParams() {
+  const box = $("params");
+  if (!S.params.length) { box.innerHTML = `<div class="empty">shown once the trainer connects</div>`; return; }
+  // update in place so a value being typed is not wiped by a refresh
+  const seen = new Set();
+  for (const p of S.params) {
+    seen.add(p.name);
+    let row = box.querySelector(`[data-param="${CSS.escape(p.name)}"]`);
+    if (!row) {
+      box.querySelector(".empty")?.remove();
+      row = document.createElement("div"); row.className = "param"; row.dataset.param = p.name;
+      box.appendChild(row);
+      row.innerHTML = `<div class="head"><span class="name"></span><span class="now"></span></div>
+        <div class="help"></div>
+        <div class="edit"><input type="range"><input type="number"><button>Apply</button></div>`;
+      row.querySelector(".name").textContent = p.name;
+      row.querySelector(".help").textContent = p.help || "";
+      const range = row.querySelector("input[type=range]"), num = row.querySelector("input[type=number]");
+      const toRange = (v) => p.log ? Math.log10(v) : v, fromRange = (v) => p.log ? 10 ** v : v;
+      range.min = toRange(p.log ? Math.max(p.min, 1e-12) : p.min); range.max = toRange(p.max);
+      range.step = p.integer ? 1 : (range.max - range.min) / 200;
+      num.min = p.min; num.max = p.max; num.step = p.integer ? 1 : "any";
+      range.addEventListener("input", () => { const v = fromRange(+range.value); num.value = p.integer ? Math.round(v) : +v.toPrecision(3); });
+      num.addEventListener("input", () => { if (num.value !== "") range.value = toRange(+num.value); });
+      row.querySelector("button").addEventListener("click", () => send("set_param", p.name, +num.value));
+      row._sync = (v) => { num.value = v; range.value = toRange(v); };
+      row._sync(p.value);
+    }
+    if (row._value !== p.value) { row._sync(p.value); row._value = p.value; }
+    row.querySelector(".now").textContent = `now ${fmtNum(p.value)}`;
+  }
+  box.querySelectorAll("[data-param]").forEach((r) => { if (!seen.has(r.dataset.param)) r.remove(); });
+}
+const LOG = [];
+function logCommand(c) {
+  const i = LOG.findIndex((x) => x.id === c.id);
+  if (i >= 0) LOG[i] = c; else LOG.unshift(c);
+  LOG.length = Math.min(LOG.length, 50);
+  const box = $("log"); box.innerHTML = "";
+  for (const x of LOG) {
+    const d = document.createElement("div");
+    const what = x.kind === "set_param" ? `set ${x.name} = ${fmtNum(x.value)}` : x.kind.replace("_", " ");
+    const status = { sent: "sent, waiting for the trainer", done: x.note ? `done, ${x.note}` : "done",
+      rejected: `rejected: ${x.error || ""}` }[x.status] || x.status;
+    d.textContent = `${new Date(x.at || Date.now()).toLocaleTimeString()}  ${what}  ${status}`;
+    if (x.status === "rejected") d.className = "slower";
+    box.appendChild(d);
+  }
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 4000);
+}
+
+// ---------- commands ----------
+async function send(kind, name = null, value = null) {
+  if (kind === "stop" && !confirm("Stop training? The trainer saves a final checkpoint, the replay buffer and the run report, then exits.")) return;
+  try {
+    const r = await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, name, value }) });
+    const body = await r.json();
+    if (!r.ok) toast(body.detail || "command failed");
+  } catch (e) { toast("dashboard not reachable"); }
+}
+document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => send(b.dataset.cmd)));
+
+// ---------- live stream ----------
+function applySnapshot(s) {
+  S.runDir = s.run_dir; S.connected = s.connected; S.trainer = s.trainer; S.params = s.params; S.runStatus = s.run_status;
+  S.tel = s.telemetry || {}; S.episodes = s.episodes; S.best = s.best; S.scalars = s.scalars;
+  charts.forEach((c) => c.el.remove()); charts.clear();
+  $("params").innerHTML = "";
+  rebuildEpisodeCharts();
+  Object.keys(S.scalars).forEach(rebuildScalarChart);
+  renderParams(); renderTiles(); renderInputs(); renderSplits(); renderConn();
+}
+function applyEvent(e) {
+  const d = e.data;
+  if (e.kind === "metrics") {
+    for (const [k, v] of Object.entries(d.values)) {
+      (S.scalars[k] ||= []).push([d.step, v]);
+      if (S.scalars[k].length > 20000) S.scalars[k].shift();
+      schedule(k);
+    }
+  } else if (e.kind === "episode") {
+    S.episodes.push(d.row); if (S.episodes.length > 20000) S.episodes.shift();
+    S.best = d.best; schedule("@episodes"); renderTiles();
+  } else if (e.kind === "trainer") {
+    const { connected, ...tr } = d;
+    S.connected = connected; S.trainer = tr; renderConn(); renderTiles();
+  } else if (e.kind === "run_status") {
+    S.runStatus = d; renderConn();
+  } else if (e.kind === "params") {
+    S.params = d.params; renderParams();
+  } else if (e.kind === "command") {
+    logCommand({ ...d, at: Date.now() });
+    if (d.status === "rejected") toast(`${d.kind} rejected: ${d.error}`);
+  }
+}
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { S.wsOpen = true; renderConn(); };
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    if (msg.type === "snapshot") return applySnapshot(msg);
+    msg.events.forEach(applyEvent);
+    if (msg.telemetry) { S.tel = msg.telemetry; renderTiles(); renderInputs(); renderSplits(); }
+  };
+  ws.onclose = () => { S.wsOpen = false; renderConn(); setTimeout(connect, 1500); };
+}
+connect();
+</script>
+</body>
+</html>
