@@ -7,7 +7,7 @@ the first dark pixels it meets, which on maps like tmrl-test is the track
 border. The beam lengths (0 = border right there, 1 = clear to the edge of the
 picture) join the telemetry and the racing line in the state vector.
 
-An optional second, far fan of 19 beams (off by default) starts higher up the picture, further down the
+A second, far fan of 19 beams starts higher up the picture, further down the
 road, and spreads 60 degrees to each side. A ramp coming up fills more of the
 picture with road, so its beams get longer; a crest or a drop cuts them short.
 Together with the car's pitch and roll, the two fans work like a lidar tilted
@@ -57,7 +57,7 @@ tmai --set run.name=lidar train
 | key | default | meaning |
 | --- | --- | --- |
 | `env.lidar_beams` | 19 | beams per fan (0 turns the lidar off) |
-| `env.lidar_far_origin` | [] (off) | where the far fan starts, for example [0.5, 0.52] |
+| `env.lidar_far_origin` | [0.5, 0.52] | where the far fan starts; `[]` turns it off |
 | `env.lidar_far_spread_deg` | 60 | how far the far fan spreads to each side of straight ahead |
 | `env.lidar_origin` | [0.5, 0.6] | where the beams start, as x and y fractions of the picture |
 | `env.lidar_dark` | 90 | grayscale level (0..255) below which a pixel counts as border |
