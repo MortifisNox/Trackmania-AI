@@ -28,7 +28,7 @@ SYNC_EVERY = 20   # learner updates between refreshes of the driving policy
 
 
 def pick_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device("cuda", torch.cuda.current_device()) if torch.cuda.is_available() else torch.device("cpu")
 
 
 class Trainer:
@@ -38,7 +38,8 @@ class Trainer:
         run, env, t = cfg["run"], cfg["env"], cfg["train"]
         self.device = device or pick_device()
         if self.device.type == "cuda":
-            torch.cuda.set_per_process_memory_fraction(cfg["gpu"]["max_vram_fraction"], self.device)
+            index = self.device.index if self.device.index is not None else torch.cuda.current_device()
+            torch.cuda.set_per_process_memory_fraction(cfg["gpu"]["max_vram_fraction"], index)
         torch.manual_seed(run["seed"])
         self.rng = np.random.default_rng(run["seed"])
 
