@@ -27,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seconds", type=float, default=15.0)
     sub.add_parser("gamepad-test", help="steer, brake and restart through the virtual pad")
     sub.add_parser("capture-test", help="measure screen capture and save what the agent sees")
+    sub.add_parser("focus-test", help="check driving and capture work while the game is not focused")
     p = sub.add_parser("drive-test", help="drive full throttle at 20 Hz and report timing")
     p.add_argument("--episodes", type=int, default=3)
     return parser
@@ -78,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         return checks.gamepad_test(cfg)
     if args.command == "capture-test":
         return checks.capture_test(cfg, Path(cfg["run"]["output_dir"]))
+    if args.command == "focus-test":
+        return checks.focus_test(cfg, Path(cfg["run"]["output_dir"]))
     if args.command == "drive-test":
         return checks.drive_test(cfg, args.episodes)
     return 2

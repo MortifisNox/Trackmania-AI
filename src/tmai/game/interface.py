@@ -17,9 +17,9 @@ class GameInterface:
         self.pad = Gamepad(self.restart_button)
         self.capture = None
         if capture:
-            from tmai.game.capture import ScreenCapture
+            from tmai.game.capture import open_capture
 
-            self.capture = ScreenCapture(env["frame_size"])
+            self.capture = open_capture(env["frame_size"], env["capture_backend"])
 
     def observe(self, timeout: float = 2.0):
         tel = self.telemetry.wait(timeout)

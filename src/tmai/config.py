@@ -61,6 +61,8 @@ def validate(cfg: dict) -> None:
 
     if env["restart_button"] not in BUTTONS:
         raise ConfigError(f"env.restart_button must be one of {sorted(BUTTONS)}")
+    if env["capture_backend"] not in ("window", "screen"):
+        raise ConfigError("env.capture_backend must be window or screen")
     if cfg["dashboard"]["host"] not in ("127.0.0.1", "localhost"):
         raise ConfigError("dashboard.host must stay on localhost")
 

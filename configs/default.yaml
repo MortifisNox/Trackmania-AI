@@ -21,6 +21,9 @@ env:
   # which restarts maps without checkpoints (like tmrl-test). For maps with
   # checkpoints, bind "Give up" to a free button in game and set it here.
   restart_button: B
+  # window: capture the game window directly (works behind other windows).
+  # screen: capture the screen area (game must be visible and on top).
+  capture_backend: window
 
 model:
   algorithm: sac_droq         # SAC actor + dropout/LayerNorm Q ensemble (DroQ)
