@@ -91,14 +91,18 @@ self-improving reference line.**
 
 ## Dashboard
 
-Local web page served by the learner (FastAPI + WebSocket), plus TensorBoard
-for history:
+Local web page (FastAPI + WebSocket) in its own process, `tmai dashboard`, so
+serving it never delays a control step; the trainer reaches it through a
+hook over localhost UDP. TensorBoard gets the same scalars for history.
+Details: [DASHBOARD.md](DASHBOARD.md).
 
 - Live: speed, inputs, current lap time, checkpoint splits against the best
-  lap, episode reward, losses, entropy, Q-values, GPU temperature/VRAM, UTD.
-- Controls: pause/resume, change learning rate / UTD / entropy target /
-  exploration at runtime, force a track reset, switch track, save checkpoint,
-  stop safely.
+  lap, episode reward, lap times, losses, entropy, Q-values, temperature.
+  Any metric the learner reports gets its own chart, so GPU temperature,
+  VRAM and UTD appear once the thermal governor reports them.
+- Controls: pause/resume, change learning rate / UTD / entropy target / demo
+  share at runtime, force a track reset, save checkpoint, stop safely.
+  Switching track comes with multi-track training (phase 7).
 
 ## Run report and best ghost
 

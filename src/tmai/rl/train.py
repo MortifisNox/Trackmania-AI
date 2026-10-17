@@ -162,6 +162,9 @@ class Trainer:
             nxt, reward, reason, info = env.step(action)
             if hooks is not None:
                 hooks.on_step(env.last_tel, info)
+                if reason is None and hooks.should_reset_episode():
+                    reason = "reset"   # dashboard: reset track, or pause mid-lap
+                    env.game.pad.release()
             with self.replay_lock:
                 self.online.add(obs.frame, obs.state, action, reward, terminal=reason in TERMINAL)
             total += reward

@@ -27,12 +27,13 @@ tmai drive-test       # full-throttle loop at 20 Hz with timing report
 tmai --set run.track=MyMap record-demo     # record your laps, build the reference line
 tmai --set run.track=MyMap progress-test   # live progress, reward and splits
 tmai --set run.track=MyMap train            # the agent learns the map (Ctrl+C saves)
+tmai dashboard        # watch and steer training at http://127.0.0.1:8080 (docs/DASHBOARD.md)
 tmai --set env.restart_button=BACK config   # override any value
 ```
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,dashboard]"
 pytest
 ```
