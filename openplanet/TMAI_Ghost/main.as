@@ -6,8 +6,13 @@
 // Only saves the agent's runs: while training, tmai keeps ai_driving.txt in
 // this plugin's storage folder (OpenplanetNext\PluginStorage\TMAI_Ghost\)
 // with the lap times of the agent's recent finishes, one per line. A ghost is
-// saved only if its time is in that list, so your own laps and personal-best
-// or record ghosts the game loads are never saved here as AI runs.
+// saved only if its time is within MATCH_MS of a time in that list, so your
+// own laps and personal-best or record ghosts the game loads are never saved
+// here as AI runs. tmai samples the race clock 20 times a second, so its lap
+// time can be a step off the game's exact finish time.
+//
+// What the plugin last did is written to status.txt next to ai_driving.txt,
+// so tmai can say why no replay was saved.
 //
 // The game adds a ghost to DataFileMgr.Ghosts when a run finishes; Replay_Save
 // writes it as a one-ghost replay (the same calls the public Autosave Ghosts
@@ -21,6 +26,21 @@ uint g_lastCount = 0;
 dictionary g_seen;       // ghost ids already decided on
 dictionary g_pending;    // ghost id -> first time seen (ms), waiting for tmai's lap list
 const uint PENDING_MS = 10000;
+const int MATCH_MS = 100;
+string g_lastId = "";    // newest ghost seen, in case the game reuses list slots
+
+void Status(const string &in text)
+{
+	try
+	{
+		IO::File f(IO::FromStorageFolder("status.txt"), IO::FileMode::Write);
+		f.Write(Time::FormatString("%Y-%m-%d %H:%M:%S", Time::Stamp) + " " + text + "\n");
+		f.Close();
+	}
+	catch
+	{
+	}
+}
 
 string SafeName(const string &in name)
 {
@@ -33,7 +53,7 @@ string SafeName(const string &in name)
 	return s.Trim();
 }
 
-// True if tmai reported a finish with this time (to the millisecond).
+// True if tmai reported a finish within MATCH_MS of this time.
 bool IsAgentLap(int ms)
 {
 	string path = IO::FromStorageFolder("ai_driving.txt");
@@ -44,7 +64,8 @@ bool IsAgentLap(int ms)
 	auto lines = text.Split("\n");
 	for (uint i = 0; i < lines.Length; i++)
 	{
-		if (Text::ParseInt(lines[i].Trim()) == ms) return true;
+		string line = lines[i].Trim();
+		if (line.Length > 0 && Math::Abs(Text::ParseInt(line) - ms) <= MATCH_MS) return true;
 	}
 	return false;
 }
@@ -71,6 +92,7 @@ void OnMap(CGameCtnChallenge@ map)
 	g_seen.DeleteAll();
 	g_pending.DeleteAll();
 	g_lastCount = 0;
+	g_lastId = "";
 	g_bestMs = BestSavedMs(IO::FromUserGameFolder("Replays/" + FOLDER + "/" + SafeName(map.MapInfo.Name)));
 }
 
@@ -83,12 +105,16 @@ void SaveGhost(CGameCtnChallenge@ map, CGameDataFileManagerScript@ dfm, CGameGho
 	dfm.Replay_Save(rel, map, ghost);
 	g_bestMs = ms;
 	print("TMAI Ghost: saved " + rel);
+	Status("saved " + rel);
 }
 
 void CheckGhosts(CGameCtnChallenge@ map, CGameDataFileManagerScript@ dfm)
 {
-	if (dfm.Ghosts.Length == g_lastCount && g_pending.GetSize() == 0) return;
-	g_lastCount = dfm.Ghosts.Length;
+	uint n = dfm.Ghosts.Length;
+	string newest = (n > 0 && dfm.Ghosts[n - 1] !is null) ? dfm.Ghosts[n - 1].IdName : "";
+	if (n == g_lastCount && newest == g_lastId && g_pending.GetSize() == 0) return;
+	g_lastCount = n;
+	g_lastId = newest;
 	for (uint i = 0; i < dfm.Ghosts.Length; i++)
 	{
 		auto ghost = dfm.Ghosts[i];
@@ -115,6 +141,8 @@ void CheckGhosts(CGameCtnChallenge@ map, CGameDataFileManagerScript@ dfm)
 		{
 			g_seen[ghost.IdName] = true;   // not the agent's run
 			g_pending.Delete(ghost.IdName);
+			print("TMAI Ghost: skipped a " + ms + " ms ghost (not in tmai's lap list)");
+			Status("skipped a " + ms + " ms ghost: no tmai lap within " + MATCH_MS + " ms");
 		}
 	}
 }
@@ -124,8 +152,11 @@ void Main()
 	if (!Permissions::CreateLocalReplay())
 	{
 		warn("TMAI Ghost: this account cannot save local replays (needs Club access)");
+		Status("cannot save local replays: this account needs Club access");
 		return;
 	}
+	print("TMAI Ghost: watching for the agent's finishes");
+	Status("running, no replay saved yet");
 	while (true)
 	{
 		yield();
