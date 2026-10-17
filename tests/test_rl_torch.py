@@ -306,3 +306,8 @@ def test_finished_laps_feed_the_pace_baseline(tmp_path):
     assert stored.any()
     batch = trainer.sample()
     assert np.isfinite(batch["reward"]).all()
+    # a resumed run starts from the same baseline, not from scratch
+    trainer.save_checkpoint()
+    resumed = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    assert resumed.baseline.lap_count == 2
+    assert resumed.baseline.lap_time_s == pytest.approx(trainer.baseline.lap_time_s)

@@ -166,6 +166,7 @@ class Trainer:
         self.episodes, self.best_ms = sd["episodes"], sd["best_ms"]
         self.env_steps_before = sd["env_steps"]
         self.best_eval_ms = sd.get("best_eval_ms")
+        self.baseline.load_state(sd.get("baseline_laps"))   # older checkpoints: rebuilt from new laps
         self.log(f"resumed from {self.ckpt} ({self.episodes} episodes, {self.agent.updates} updates)")
 
     def save_checkpoint(self) -> Path:
@@ -174,7 +175,8 @@ class Trainer:
         with self.agent_lock:
             agent = self.agent.state_dict()
         torch.save({"agent": agent, "episodes": self.episodes, "best_ms": self.best_ms,
-                    "best_eval_ms": self.best_eval_ms, "env_steps": self.env_steps()}, tmp)
+                    "best_eval_ms": self.best_eval_ms, "env_steps": self.env_steps(),
+                    "baseline_laps": self.baseline.state()}, tmp)
         tmp.replace(self.ckpt)
         return self.ckpt
 
