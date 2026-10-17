@@ -165,3 +165,45 @@ def test_faster_lap_becomes_reference(tmp_path):
     assert (store.root / "reference_demo.npz").exists()
     assert ReferenceLine.load(store.reference).times[-1] == pytest.approx(1.0)
     assert trainer.tracker.ref.times[-1] == pytest.approx(1.0) and trainer.demo is not None
+
+
+class LidarGame(FakeGame):
+    """FakeGame that also reports lidar beams, as GameInterface does."""
+
+    beams = np.linspace(0.2, 1.0, 5).astype(np.float32)
+
+
+def test_trainer_with_lidar_and_no_camera(tmp_path):
+    from tmai.rl.env import TMEnv
+    from tmai.rl.train import Trainer
+    from tmai.track.demo import LapBuffer
+    from tmai.track.store import TrackStore
+
+    cfg = small_cfg(tmp_path, warmup_steps=10, updates_per_step=1)
+    make_track(tmp_path, cfg, with_demo=False)
+    buf = LapBuffer()
+    for i in range(31):
+        x = 2.0 * i
+        flags = PLAYING | (protocol.FLAG_FINISHED if x >= LENGTH else 0)
+        buf.add(np.full((64, 64), i, np.uint8),
+                tel(pos=(x, 0.0, 0.0), speed=40.0, vel=(40.0, 0.0, 0.0), race_time_ms=50 * i,
+                    steer=0.0, gas=1.0, flags=flags), LidarGame.beams)
+    buf.save(TrackStore(cfg["run"]["output_dir"], cfg["run"]["track"]).demos, 1500)
+
+    cfg["env"]["lidar_beams"] = 5
+    cfg["env"]["camera"] = False
+    trainer = Trainer(cfg, game=LidarGame(), device=torch.device("cpu"), log=lambda *_: None)
+    assert trainer.demo is not None and trainer.demo.state.shape[1] == STATE_DIM + 5
+    env = TMEnv(cfg, trainer.game, trainer.tracker)
+    obs = env.reset()
+    assert obs.state.shape == (STATE_DIM + 5,)
+    assert not any(True for _ in trainer.agent.encoder.parameters())   # no CNN without the camera
+    ep = trainer.run_episode(env)
+    assert ep["steps"] > 0
+    while trainer.learn_once():
+        pass
+    trainer.save_checkpoint()
+
+    cfg["env"]["lidar_beams"] = 0
+    with pytest.raises(RuntimeError, match="different inputs"):
+        Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)

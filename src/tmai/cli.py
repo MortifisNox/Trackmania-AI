@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
-        from tmai.rl.train import Trainer
+        from tmai.rl.train import IncompatibleCheckpoint, Trainer
         from tmai.run.checkpoint import prepare_resume
         from tmai.run.hooks import HookList
         from tmai.run.shutdown import ShutdownHook
@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             prepare_resume(Path(cfg["run"]["output_dir"]) / cfg["run"]["name"])
         try:
             trainer = Trainer(cfg, fresh=args.fresh)
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, IncompatibleCheckpoint) as exc:
             print(exc)
             return 1
         from tmai.dashboard.link import DashboardHook

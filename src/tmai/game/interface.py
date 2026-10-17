@@ -17,14 +17,21 @@ class GameInterface:
         self.restart_button = env["restart_button"]
         self.pad = Gamepad(self.restart_button, guard=InputGuard(env["input_guard"]))
         self.capture = None
+        self.lidar = None
+        self.beams = None   # lidar beam lengths for the last observe(), when the lidar is on
         if capture:
             from tmai.game.capture import open_capture
+            from tmai.game.lidar import from_config
 
-            self.capture = open_capture(env["frame_size"], env["capture_backend"])
+            self.lidar = from_config(env)
+            self.capture = open_capture(env["frame_size"], env["capture_backend"],
+                                        env["lidar_width"] if self.lidar else 0)
 
     def observe(self, timeout: float = 2.0):
         tel = self.telemetry.wait(timeout)
         frame = self.capture.grab() if self.capture else None
+        if self.lidar is not None:
+            self.beams = self.lidar.measure(self.capture.grab_wide())
         return frame, tel
 
     def act(self, action) -> tuple[float, float, float]:

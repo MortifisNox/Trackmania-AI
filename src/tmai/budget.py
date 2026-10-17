@@ -4,8 +4,13 @@ from __future__ import annotations
 
 # Per transition: one uint8 frame (stacks are rebuilt from neighbouring frames),
 # a float32 state vector, a 3-float action, reward, done flag and episode index.
-STATE_DIM = 48
+STATE_DIM = 48       # without lidar beams
 ACTION_DIM = 3
+
+
+def state_dim(env: dict) -> int:
+    """Length of the state vector: the base inputs plus one per lidar beam."""
+    return STATE_DIM + int(env.get("lidar_beams") or 0)
 
 
 def bytes_per_transition(frame_size: int, state_dim: int = STATE_DIM) -> int:
@@ -15,18 +20,19 @@ def bytes_per_transition(frame_size: int, state_dim: int = STATE_DIM) -> int:
     return frame + state + action + 4 + 1 + 4
 
 
-def replay_bytes(capacity: int, frame_size: int) -> int:
-    return capacity * bytes_per_transition(frame_size)
+def replay_bytes(capacity: int, frame_size: int, state_dim: int = STATE_DIM) -> int:
+    return capacity * bytes_per_transition(frame_size, state_dim)
 
 
-def suggest_replay_capacity(total_ram_bytes: int, frame_size: int, ram_share: float = 0.25) -> int:
+def suggest_replay_capacity(total_ram_bytes: int, frame_size: int, ram_share: float = 0.25,
+                            state_dim: int = STATE_DIM) -> int:
     """Largest capacity (rounded down to 50k) that uses at most `ram_share` of RAM.
 
     The game, the OS and the browser dashboard need the rest; a quarter of RAM
     keeps a 16 GB laptop clear of swapping during multi-day runs.
     """
     budget = total_ram_bytes * ram_share
-    capacity = int(budget // bytes_per_transition(frame_size))
+    capacity = int(budget // bytes_per_transition(frame_size, state_dim))
     return max(50_000, (capacity // 50_000) * 50_000)
 
 
