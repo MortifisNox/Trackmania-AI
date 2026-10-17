@@ -140,3 +140,29 @@ def test_capture_backend_validated():
     assert load_config()["env"]["capture_backend"] == "window"
     with pytest.raises(ConfigError):
         load_config(overrides=["env.capture_backend=gpu"])
+
+
+def test_restart_that_respawns_at_a_checkpoint_is_refused():
+    from tmai.game import interface, protocol
+    from tmai.game.interface import CheckpointRespawn, GameInterface
+
+    playing = protocol.FLAG_PLAYER | protocol.FLAG_PLAYING
+    frames = iter([
+        protocol.decode(protocol.encode(seq=1, flags=playing, race_time_ms=9000, pos=(100.0, 0.0, 0.0), speed=30.0)),
+        protocol.decode(protocol.encode(seq=2, flags=playing, race_time_ms=9050, pos=(50.0, 0.0, 0.0))),
+        protocol.decode(protocol.encode(seq=3, flags=playing, race_time_ms=9100, pos=(50.0, 0.0, 0.0))),
+    ])
+
+    class Tel:
+        def wait(self, timeout, after_seq=None):
+            return next(frames)
+
+    class Pad:
+        def press_restart(self):
+            pass
+
+    game = GameInterface.__new__(GameInterface)
+    game.telemetry, game.pad, game.restart_button = Tel(), Pad(), "B"
+    with pytest.raises(CheckpointRespawn):
+        game.restart()
+    assert interface.CheckpointRespawn is CheckpointRespawn
