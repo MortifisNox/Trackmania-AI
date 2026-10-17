@@ -264,8 +264,20 @@ def test_preserve_best_replay_picks_fastest(tmp_path):
     info = ghost.preserve_best_replay(tmp_path / "run", "tmrl-test", root=root, best_ms=39870)
     assert info["found"] and info["lap_ms"] == 39870 and "note" not in info
     assert (tmp_path / "run" / "report" / "best-39870ms.Replay.Gbx").exists()
-    missing = ghost.preserve_best_replay(tmp_path / "run", "other", root=root)
-    assert not missing["found"]
+    missing = ghost.preserve_best_replay(tmp_path / "run", "other", root=root, openplanet=tmp_path / "op")
+    assert not missing["found"] and "but there are for TMRL Test" in missing["detail"]
+    empty = ghost.preserve_best_replay(tmp_path / "run", "other", root=tmp_path / "none", openplanet=tmp_path / "op")
+    assert not empty["found"] and "not installed" in empty["detail"]
+
+
+def test_replay_detail_says_what_the_plugin_did(tmp_path):
+    op = tmp_path / "OpenplanetNext"
+    (op / "Plugins" / "TMAI_Ghost").mkdir(parents=True)
+    assert "never ran" in ghost.plugin_state(op)
+    (op / "PluginStorage" / "TMAI_Ghost").mkdir(parents=True)
+    (op / "PluginStorage" / "TMAI_Ghost" / "status.txt").write_text("2026-10-17 10:00:00 cannot save local replays\n")
+    info = ghost.preserve_best_replay(tmp_path / "run", "Test1", root=tmp_path / "Replays", openplanet=op)
+    assert info["detail"].endswith("TMAI Ghost plugin said: 2026-10-17 10:00:00 cannot save local replays")
 
 
 # -- the trainer hook end to end ----------------------------------------------------
