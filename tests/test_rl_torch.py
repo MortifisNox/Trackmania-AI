@@ -107,3 +107,39 @@ def test_trainer_train_loop_writes_csv(tmp_path):
     rows = (tmp_path / "default" / "episodes.csv").read_text().splitlines()
     assert rows[0].startswith("episode,") and len(rows) >= 2
     assert (tmp_path / "default" / "checkpoints" / "latest.pt").exists()
+
+
+def test_trainer_runs_shutdown_hooks(tmp_path):
+    from tmai.rl.train import Trainer
+    from tmai.run.hooks import HookList, TrainerHooks
+    from tmai.run.shutdown import AgentLaps, ShutdownHook
+
+    class Recorder(TrainerHooks):
+        def __init__(self):
+            self.calls = []
+
+        def on_start(self, trainer):
+            self.calls.append("start")
+
+        def on_step(self, tel, info):
+            if "step" not in self.calls:
+                self.calls.append("step")
+
+        def on_episode(self, row):
+            self.calls.append(("episode", row["end"]))
+
+        def on_stop(self, trainer):
+            self.calls.append("stop")
+
+    cfg = small_cfg(tmp_path, warmup_steps=10, updates_per_step=1)
+    make_track(tmp_path, cfg)
+    rec = Recorder()
+    shutdown = ShutdownHook(cfg, log=lambda *_: None, agent_laps=AgentLaps(tmp_path / "op" / "a" / "b" / "ai.txt"),
+                            replays_root=tmp_path / "replays")
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    trainer.train(minutes=0.02, hooks=HookList(shutdown, rec))
+    assert rec.calls[:2] == ["start", "step"] and rec.calls[-1] == "stop"
+    assert ("episode", "finished") in rec.calls
+    run_dir = tmp_path / "default"
+    assert (run_dir / "checkpoints" / "latest.pt").exists()
+    assert (run_dir / "best_laps.jsonl").exists()

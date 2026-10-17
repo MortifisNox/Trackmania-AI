@@ -110,13 +110,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "train":
         from tmai.rl.train import Trainer
+        from tmai.run.checkpoint import prepare_resume
+        from tmai.run.hooks import HookList
+        from tmai.run.shutdown import ShutdownHook
 
+        if not args.fresh:
+            prepare_resume(Path(cfg["run"]["output_dir"]) / cfg["run"]["name"])
         try:
             trainer = Trainer(cfg, fresh=args.fresh)
         except FileNotFoundError as exc:
             print(exc)
             return 1
-        return trainer.train(args.minutes)
+        return trainer.train(args.minutes, hooks=HookList(ShutdownHook(cfg)))
 
     from tmai.game import checks
 
