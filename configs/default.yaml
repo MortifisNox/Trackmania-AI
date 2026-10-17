@@ -1,0 +1,57 @@
+# Default run configuration, sized for an RTX 4050 Laptop GPU (6 GB VRAM)
+# running Trackmania on the same GPU. Any key can be overridden with
+# `tmai <command> --config my.yaml` or `--set section.key=value`.
+
+run:
+  name: default
+  output_dir: runs            # checkpoints, replay snapshots, reports, logs
+  seed: 0
+
+env:
+  step_hz: 20                 # control frequency (TMRL uses 20 Hz too)
+  frame_size: 64              # square grayscale frames fed to the CNN
+  frame_stack: 4
+  lookahead_points: 10        # reference-line points ahead of the car, in car frame
+  lookahead_spacing_m: 10.0
+  episode_timeout_s: 120      # hard cap per attempt; lap length should fit inside
+  stuck_timeout_s: 3.0        # reset if speed stays below stuck_speed_kmh this long
+  stuck_speed_kmh: 10.0
+  telemetry_port: 9000        # Openplanet plugin -> Python (localhost only)
+
+model:
+  algorithm: sac_droq         # SAC actor + dropout/LayerNorm Q ensemble (DroQ)
+  encoder_channels: [32, 64, 64, 64]
+  hidden_dim: 256
+  num_critics: 2
+  critic_dropout: 0.01
+  # bf16 autocast uses the 4050's tensor cores; fp32 master weights are kept.
+  precision: bf16
+
+train:
+  batch_size: 256
+  learning_rate: 3.0e-4
+  gamma: 0.99
+  tau: 0.005
+  updates_per_step: 4         # update-to-data ratio; auto-lowered when hot
+  warmup_steps: 5000          # random/demo actions before learning starts
+  demo_ratio: 0.5             # fraction of each batch from demonstrations (RLPD)
+  checkpoint_every_min: 10
+
+replay:
+  # Stored in system RAM, not VRAM. ~4.2 KB per transition at 64x64 frames,
+  # so 500k transitions is ~2.1 GB. `tmai doctor` suggests a size for your RAM.
+  capacity: 500000
+  snapshot_every_min: 30
+
+gpu:
+  # Hard cap on the share of VRAM PyTorch may allocate, leaving room for the game.
+  max_vram_fraction: 0.5
+  # NVML temperature thresholds (deg C): above soft, halve updates_per_step;
+  # above hard, pause learning until the GPU cools below soft.
+  temp_soft_c: 80
+  temp_hard_c: 87
+
+dashboard:
+  host: 127.0.0.1             # never expose to the network
+  port: 8080
+  tensorboard: true
