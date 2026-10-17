@@ -17,7 +17,7 @@ Any of these stops training cleanly:
 
   ```powershell
   cd "D:\AI Projects\Trackmania AI"
-  .venv\Scripts\Activate.ps1
+  .\.venv\Scripts\Activate.ps1
   tmai stop
   ```
 
@@ -53,7 +53,9 @@ loading, and a damaged snapshot falls back to the previous one.
 | `checkpoints/latest.pt` | weights and optimiser state the trainer resumes from |
 | `checkpoints/best.pt`, `final.pt`, `history-*.pt` | checksummed copies; `best.pt` holds the weights that drove the best lap |
 | `replay/snap-*/` | the last two replay buffer snapshots (~2 GB each at 500k entries) |
+| `checkpoints/best_test_lap.pt` | the weights that drove the fastest test lap |
 | `episodes.csv` | one row per attempt (trainer) |
+| `eval.csv` | one row per test lap (every 10th attempt, driven without exploring) |
 | `best_laps.jsonl` | every new best lap with its checkpoint splits |
 | `control/stop.json` | a pending stop request |
 | `control/status.json` | running / stopping (and which step) / stopped |
@@ -61,8 +63,10 @@ loading, and a damaged snapshot falls back to the previous one.
 | `report/summary.json` | the same numbers for scripts |
 | `report/best-<time>ms.Replay.Gbx` | copy of the best lap's replay |
 
-`tmai report` rebuilds the report at any time, including during a run or
-after a crash.
+`tmai --set run.track=Test1 report` rebuilds the report at any time,
+including during a run or after a crash. Pass the same `run.track` (and
+`run.name`, if you set one) as the training run, so it finds the right demo
+laps and replay.
 
 ## The run report
 
@@ -104,8 +108,15 @@ What is verified and what is not:
   [Archivist](https://openplanet.dev/plugin/archivist)
   ([source](https://github.com/XertroV/tm-archivist)) do. Both need Club
   access (`Permissions::CreateLocalReplay`), which you have.
-- *Not yet tested in game:* our plugin itself (it has not been compiled by
-  Openplanet yet), and the PluginStorage path tmai writes to.
+- *Verified in game:* our plugin (version 0.2.0) saves the agent's best lap,
+  and the safe stop copies it into the report
+  (`best-20733ms.Replay.Gbx` on Test1).
+- *Handled, watch for it:* after a personal best the game shows an
+  end-of-race menu that ignores the restart button; tmai presses
+  `env.menu_button` (A, which should pick **Improve**) to get past it.
+- *If no replay is saved,* the stop message and the report say why (plugin
+  not installed, old copy still loaded, no Club access, or no new best); see
+  [TROUBLESHOOTING.md](TROUBLESHOOTING.md#no-best-lap-replay-in-the-report).
 - *Not done:* opening the replay in game automatically. Openplanet can start
   maps from a plugin, but I could not confirm a call that opens a replay, so
   the report gives the two menu paths instead.

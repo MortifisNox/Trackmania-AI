@@ -10,7 +10,7 @@ can be opened, closed or restarted at any time without touching training.
 
 ```powershell
 cd "D:\AI Projects\Trackmania AI"
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 pip install -e ".[dashboard]"     # once
 tmai dashboard
 ```
@@ -42,7 +42,7 @@ To try it without the game, `tmai dashboard --demo` feeds it a fake trainer
 | Reset track | ends the current attempt and restarts the map |
 | Save checkpoint | writes a checkpoint when the current attempt ends |
 | Stop safely | same as `tmai stop`: final checkpoint, replay snapshot, report |
-| Hyperparameters | learning rate, updates per step, entropy target and demo share change immediately; they are not saved into the config |
+| Hyperparameters | learning rate, updates per step, entropy target and demo share change immediately; they are not saved into the config. Setting the entropy target or demo share turns off its automatic schedule for the rest of the run |
 
 ## History
 
