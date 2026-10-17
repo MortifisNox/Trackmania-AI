@@ -143,3 +143,22 @@ def test_trainer_runs_shutdown_hooks(tmp_path):
     run_dir = tmp_path / "default"
     assert (run_dir / "checkpoints" / "latest.pt").exists()
     assert (run_dir / "best_laps.jsonl").exists()
+
+
+def test_faster_lap_becomes_reference(tmp_path):
+    from tmai.rl.train import Trainer
+    from tmai.track.reference import ReferenceLine
+
+    cfg = small_cfg(tmp_path)
+    store = make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=FakeGame(), device=torch.device("cpu"), log=lambda *_: None)
+    assert trainer.tracker.ref.times is not None              # rebuilt with lap timing
+    ref_ms = trainer.tracker.ref.times[-1] * 1000
+    trace = [((3.0 * i, 0.0, 0.0), 50 * i, 0, 0) for i in range(21)]
+    slow = {"lap_ms": int(ref_ms) + 100, "trace": trace}
+    assert not trainer.maybe_adopt_lap(slow)
+    fast = {"lap_ms": 1000, "trace": trace}
+    assert trainer.maybe_adopt_lap(fast)
+    assert (store.root / "reference_demo.npz").exists()
+    assert ReferenceLine.load(store.reference).times[-1] == pytest.approx(1.0)
+    assert trainer.tracker.ref.times[-1] == pytest.approx(1.0) and trainer.demo is not None

@@ -19,7 +19,8 @@ def build_reference(cfg: dict) -> int:
     store = _store(cfg)
     demo = store.best_demo()
     with np.load(demo) as d:
-        ref = ReferenceLine.from_positions(d["pos"], cfg["track"]["reference_spacing_m"])
+        ref = ReferenceLine.from_positions(d["pos"], cfg["track"]["reference_spacing_m"],
+                                           d["race_time_ms"] / 1000.0)
         cp_times = [int(x) for x in d["cp_times"]]
         lap_ms = int(d["lap_time_ms"])
     ref.save(store.reference)
