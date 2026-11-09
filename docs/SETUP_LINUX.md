@@ -144,9 +144,8 @@ In game: **F3 > Developer > (Re)load plugin > TMAI Telemetry**, then
   15 seconds. Without this, Back respawns at a checkpoint and training stops
   with "BACK respawned at a checkpoint".
 - **Unplug your own controller** before binding and while the AI trains. With
-  a real pad connected, the game treats that pad as the first controller, so
-  bindings and the AI's presses go to different devices and Back keeps
-  respawning instead of giving up.
+  a real pad connected, the game can mix up the two pads, and the virtual
+  pad's Back keeps respawning instead of giving up.
 - Keep the game window focused while training, at least until
   `tmai gamepad-test` shows it takes input in the background.
 
