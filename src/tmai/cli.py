@@ -89,7 +89,11 @@ def main(argv: list[str] | None = None) -> int:
         if not launch.ensure_settings_file(settings_path):
             print(f"created {settings_path}; write your map name and buttons in it, then start again")
             return 1
-    settings, overrides = None, []
+    elif settings_path is None and launch.SETTINGS_FILE.exists():
+        # Every command uses your settings file, so `tmai doctor` or `tmai train`
+        # see the same map, run and observation mode as start_training.
+        settings_path = launch.SETTINGS_FILE
+    settings, overrides = None, launch.platform_overrides()
     if settings_path is not None:
         settings_path = Path(settings_path).resolve()
         try:

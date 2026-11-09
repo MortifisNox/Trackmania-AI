@@ -91,17 +91,35 @@ STATE_PRESET = {"env.lookahead_points": 20, "env.lookahead_spacing_m": 5.0, "env
                 "replay.capacity": 2_000_000}
 
 
+def host_system() -> str:
+    return platform.system()
+
+
 def observation(settings: dict, system: str | None = None) -> str:
     """"auto" drives from the camera on Windows and from game state elsewhere,
     since window capture only exists on Windows."""
     mode = str(settings["observation"]).lower()
     if mode == "auto":
-        return "image" if (system or platform.system()) == "Windows" else "state"
+        return "image" if (system or host_system()) == "Windows" else "state"
     return mode
 
 
-def run_name(settings: dict) -> str:
-    return (settings["run_name"] or settings["map_name"]).strip()
+def platform_overrides(system: str | None = None) -> list[str]:
+    """Overrides for commands run without a settings file: on Linux the camera
+    is not available, so they drive from game state like `tmai start` does."""
+    if observation({"observation": "auto"}, system) == "image":
+        return []
+    values = {**STATE_PRESET, "env.observation": "state"}
+    return [f"{key}={json.dumps(value)}" for key, value in values.items()]
+
+
+def run_name(settings: dict, mode: str = "image") -> str:
+    """The run_name setting, or the map name. State-mode runs get a -state
+    suffix, since a camera run of the same map cannot continue in state mode."""
+    if settings["run_name"].strip():
+        return settings["run_name"].strip()
+    name = settings["map_name"].strip()
+    return f"{name}-state" if mode == "state" else name
 
 
 def to_overrides(settings: dict, system: str | None = None) -> list[str]:
@@ -111,7 +129,7 @@ def to_overrides(settings: dict, system: str | None = None) -> list[str]:
         **(STATE_PRESET if mode == "state" else {}),
         "env.observation": mode,
         "run.track": settings["map_name"].strip(),
-        "run.name": run_name(settings),
+        "run.name": run_name(settings, mode),
         "env.restart_button": restart_button(settings),
         "env.menu_button": str(settings["menu_button"]).upper(),
         "env.capture_backend": settings["capture_backend"],
