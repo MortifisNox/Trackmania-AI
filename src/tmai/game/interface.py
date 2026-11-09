@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import time
 
 from tmai.game.gamepad import Gamepad
@@ -21,6 +22,11 @@ class GameInterface:
         self.menu_button = env.get("menu_button", "A")
         self.pad = Gamepad(self.restart_button)
         self.capture = None
+        if capture and platform.system() != "Windows":
+            self.close()
+            raise RuntimeError("the camera (env.observation image) needs Windows window capture; "
+                               "on Linux set observation to state in tmai_settings.json, "
+                               "or pass --set env.observation=state")
         if capture:
             from tmai.game.capture import open_capture
 

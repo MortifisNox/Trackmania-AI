@@ -41,11 +41,16 @@ def demo_telemetry(d) -> list[Telemetry]:
 
 def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker) -> tuple[int, float]:
     """Adds one demo lap; returns (transitions added, total reward)."""
+    want = buffer.frames.shape[1:]
     with np.load(path) as d:
-        if "frames" not in d.files:
-            return 0, 0.0
-        frames = d["frames"]
         tels = demo_telemetry(d)
+        if want == (0, 0):
+            # State mode needs no frames, so laps recorded with or without a camera both work.
+            frames = np.zeros((len(tels), 0, 0), dtype=np.uint8)
+        elif "frames" not in d.files or d["frames"].shape[1:] != want:
+            return 0, 0.0   # recorded without the camera (state mode), or at another size
+        else:
+            frames = d["frames"]
     if len(frames) != len(tels) or len(tels) < 2:
         return 0, 0.0
     actions = [from_controls(t.steer, t.gas, t.brake) for t in tels]
@@ -61,7 +66,7 @@ def add_lap(buffer: ReplayBuffer, tracker: ProgressTracker, frames, tels: list[T
     (transitions added, total reward)."""
     buffer.start_episode()
     tracker.reset(tels[0])
-    state = state_vector(tels[0], tracker.lookahead(tels[0]), first_prev_action)
+    state = state_vector(tels[0], tracker.lookahead(tels[0]), first_prev_action, tracker.env)
     total, added = 0.0, 0
     for i in range(len(tels) - 1):
         info = tracker.step(tels[i + 1])
@@ -69,7 +74,7 @@ def add_lap(buffer: ReplayBuffer, tracker: ProgressTracker, frames, tels: list[T
                    terminal=info.done == "finished", pace=info.pace_inputs)
         total += info.reward
         added += 1
-        state = state_vector(tels[i + 1], info.lookahead, actions[i])
+        state = state_vector(tels[i + 1], info.lookahead, actions[i], tracker.env)
         if info.done:
             break
     buffer.add(frames[i + 1], state)

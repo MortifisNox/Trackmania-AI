@@ -1,7 +1,7 @@
 # Everyday use
 
 The short version of how to update, train, watch and stop. First time on this
-laptop? Do [SETUP_WINDOWS.md](SETUP_WINDOWS.md) first. Something went wrong?
+laptop? Do [SETUP_WINDOWS.md](SETUP_WINDOWS.md) or [SETUP_LINUX.md](SETUP_LINUX.md) first. Something went wrong?
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 Always train **offline, on a local map, in Openplanet Developer mode**. Never
@@ -9,7 +9,8 @@ online. The full rules are in [SAFE_USE.md](SAFE_USE.md).
 
 ## One click
 
-Double-click **`start_training.bat`** in the repo folder. It:
+Double-click **`start_training.bat`** in the repo folder (on Linux, run
+**`./start_training.sh`** from a terminal in the repo folder). It:
 
 1. updates the code (`git pull`, and `pip install` when something new came in),
 2. reinstalls the game plugins,

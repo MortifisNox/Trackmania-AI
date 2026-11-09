@@ -1,8 +1,8 @@
 {
   "_help": {
-    "how": "Copy this file to tmai_settings.json (start_training.bat does it for you), edit the values below, save, then double-click start_training.bat. Lines starting with _ are notes and are ignored.",
+    "how": "Copy this file to tmai_settings.json (start_training.bat does it for you), edit the values below, save, then double-click start_training.bat (Windows) or run ./start_training.sh (Linux). Lines starting with _ are notes and are ignored.",
     "map_name": "The map's name as the game shows it, e.g. Test1. Demo laps and the best replay are found by this name.",
-    "run_name": "Folder under runs\\ for this training. Leave empty to use the map name, so each map keeps its own run.",
+    "run_name": "Folder under runs/ for this training. Leave empty to use the map name, so each map keeps its own run.",
     "map_has_checkpoints": "true if the map has checkpoints. Only used when restart_button is auto.",
     "restart_button": "Gamepad button that restarts the attempt: auto, B, BACK, START, X, Y, A, LB, RB or a DPAD_ direction. auto = BACK (bind Give up to View/Back in Settings > Controls) on maps with checkpoints, B on maps without.",
     "menu_button": "Button that picks Improve on the end-of-race menu after a personal best. Usually A.",
@@ -15,7 +15,8 @@
     "open_browser": "true = open the dashboard in your browser.",
     "fresh_start": "true = ignore the last checkpoint and start this run over. Put it back to false afterwards.",
     "train_minutes": "Stop by itself after this many minutes, or null to train until you stop it.",
-    "capture_backend": "window (works behind other windows) or screen (game must be visible and on top).",
+    "observation": "What the AI drives from: auto, image or state. image = camera frames plus game state (Windows only). state = game state from the Openplanet plugin alone, no camera (works on Linux). auto = image on Windows, state on Linux. A run keeps the mode it started with, so give a new mode its own run_name.",
+    "capture_backend": "window (works behind other windows) or screen (game must be visible and on top). Only used with observation image.",
     "dashboard_port": "Dashboard address is http://127.0.0.1:<port>.",
     "extra_settings": "Any other setting from configs/default.yaml, e.g. {\"train.batch_size\": 128, \"env.episode_timeout_s\": 90}."
   },
@@ -33,6 +34,7 @@
   "open_browser": true,
   "fresh_start": false,
   "train_minutes": null,
+  "observation": "auto",
   "capture_backend": "window",
   "dashboard_port": 8080,
   "extra_settings": {}

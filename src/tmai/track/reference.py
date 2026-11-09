@@ -99,9 +99,11 @@ class ReferenceLine:
         s = min(max(s, 0.0), self.length)
         return np.stack([np.interp(s, self.s, self.points[:, k]) for k in range(3)])
 
-    def lookahead(self, pos, forward, up, s: float, count: int, spacing: float) -> np.ndarray:
+    def lookahead(self, pos, forward, up, s: float, count: int, spacing: float,
+                  growth: float = 1.0) -> np.ndarray:
         """`count` reference points ahead of `s`, as (forward, left, up) metres in
-        the car's frame, flattened to (count * 3,)."""
+        the car's frame, flattened to (count * 3,). Each gap is `growth` times
+        the one before (1.0 = evenly spaced)."""
         f = np.asarray(forward, dtype=np.float64)
         u = np.asarray(up, dtype=np.float64)
         f /= max(np.linalg.norm(f), 1e-9)
@@ -109,7 +111,8 @@ class ReferenceLine:
         left = np.cross(u, f)  # sign convention only; the policy learns either way
         p = np.asarray(pos, dtype=np.float64)
         out = np.empty((count, 3))
+        ahead = np.cumsum(spacing * growth ** np.arange(count))
         for i in range(count):
-            rel = self.point_at(s + (i + 1) * spacing) - p
+            rel = self.point_at(s + ahead[i]) - p
             out[i] = (rel @ f, rel @ left, rel @ u)
         return out.reshape(-1)

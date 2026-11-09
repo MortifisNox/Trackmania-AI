@@ -118,8 +118,10 @@ def drive_test(cfg: dict, episodes: int) -> int:
     """Scripted driver: full throttle, straight ahead, at the real control rate."""
     from tmai.game.interface import GameInterface
 
+    from tmai.rl.features import uses_camera
+
     env = cfg["env"]
-    game = GameInterface(cfg, capture=True)
+    game = GameInterface(cfg, capture=uses_camera(env))
     clock = RealtimeClock(env["step_hz"])
     monitor = EpisodeMonitor(env["episode_timeout_s"], env["stuck_timeout_s"], env["stuck_speed_kmh"])
     lateness, ages, ok = [], [], True

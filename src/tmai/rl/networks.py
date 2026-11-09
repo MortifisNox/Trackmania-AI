@@ -29,6 +29,23 @@ class Encoder(nn.Module):
         return self.head(self.convs(x).flatten(1))
 
 
+class NoEncoder(nn.Module):
+    """State mode has no camera: (B, stack, 0, 0) -> (B, 0) features."""
+
+    feature_dim = 0
+
+    def forward(self, frames: torch.Tensor) -> torch.Tensor:
+        return frames.new_zeros((frames.shape[0], 0), dtype=torch.float32)
+
+
+def make_encoder(env: dict, model: dict) -> tuple[nn.Module, int]:
+    """The image encoder and its feature size; no encoder in state mode."""
+    if env.get("observation", "image") == "state":
+        return NoEncoder(), 0
+    feat = model["hidden_dim"]
+    return Encoder(env["frame_stack"], env["frame_size"], model["encoder_channels"], feat), feat
+
+
 def mlp(n_in: int, hidden: int, n_out: int, dropout: float = 0.0, layer_norm: bool = False) -> nn.Sequential:
     layers: list[nn.Module] = []
     for _ in range(2):

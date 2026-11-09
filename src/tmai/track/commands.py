@@ -34,8 +34,10 @@ def record_demo(cfg: dict, laps: int) -> int:
     from tmai.game.interface import GameInterface
     from tmai.track.demo import record_laps
 
+    from tmai.rl.features import uses_camera
+
     store = _store(cfg)
-    game = GameInterface(cfg, capture=True)
+    game = GameInterface(cfg, capture=uses_camera(cfg["env"]))
     try:
         record_laps(game, store.demos, laps, cfg["env"]["step_hz"])
     except KeyboardInterrupt:

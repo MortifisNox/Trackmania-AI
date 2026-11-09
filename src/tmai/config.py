@@ -68,6 +68,12 @@ def validate(cfg: dict) -> None:
         raise ConfigError(f"env.restart_button must be one of {sorted(BUTTONS)}")
     if env.get("menu_button", "A") not in BUTTONS:
         raise ConfigError(f"env.menu_button must be one of {sorted(BUTTONS)}")
+    if env["observation"] not in ("image", "state"):
+        raise ConfigError("env.observation must be image or state")
+    if env["observation"] == "image" and env["lookahead_points"] != 10:
+        raise ConfigError("env.lookahead_points must be 10 with observation image; state mode allows any count")
+    if not 1.0 <= env["lookahead_growth"] <= 1.5:
+        raise ConfigError("env.lookahead_growth must be between 1.0 and 1.5")
     if env["capture_backend"] not in ("window", "screen"):
         raise ConfigError("env.capture_backend must be window or screen")
     if cfg["dashboard"]["host"] not in ("127.0.0.1", "localhost"):

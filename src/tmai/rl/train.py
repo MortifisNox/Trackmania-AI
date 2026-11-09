@@ -15,6 +15,7 @@ import torch
 from tmai.game.interface import CheckpointRespawn
 from tmai.rl.demos import add_lap, load_demo
 from tmai.rl.env import TERMINAL, TMEnv
+from tmai.rl.features import frame_size, state_dim, uses_camera
 from tmai.rl.replay import ReplayBuffer, concat_batches
 from tmai.rl.sac import Policy, SACAgent
 from tmai.track.baseline import PaceBaseline
@@ -75,7 +76,7 @@ class Trainer:
 
         self.best_laps: list[dict] = []   # agent's fastest finished laps, fastest first
         self.demo = self._load_demos()
-        self.online = ReplayBuffer(cfg["replay"]["capacity"], env["frame_size"], env["frame_stack"])
+        self.online = ReplayBuffer(cfg["replay"]["capacity"], frame_size(env), env["frame_stack"], state_dim(env))
         self.agent = SACAgent(cfg, self.device)
         self.policy = Policy(cfg, self.device)
         self.episodes, self.best_ms, self.env_steps_before = 0, None, 0
@@ -116,7 +117,7 @@ class Trainer:
             self.log("no demo laps found: training starts from scratch (slower)")
             return None
         env = self.cfg["env"]
-        buf = ReplayBuffer(sum(sizes) + len(sizes) + 1, env["frame_size"], env["frame_stack"])
+        buf = ReplayBuffer(sum(sizes) + len(sizes) + 1, frame_size(env), env["frame_stack"], state_dim(env))
         demo_tracker = ProgressTracker(self.tracker.ref, self.cfg, SplitTracker(self.tracker.splits.best),
                                        self.baseline)
         for f in files:
@@ -162,6 +163,12 @@ class Trainer:
 
     def _load_checkpoint(self) -> None:
         sd = torch.load(self.ckpt, map_location=self.device, weights_only=False)
+        mode = self.cfg["env"].get("observation", "image")
+        saved = sd.get("observation", "image")
+        if saved != mode:
+            raise FileNotFoundError(
+                f"{self.ckpt} was trained with env.observation={saved}, this run uses {mode}; "
+                "give this run another run_name, or start it over with fresh_start")
         self.agent.load_state_dict(sd["agent"])
         self.episodes, self.best_ms = sd["episodes"], sd["best_ms"]
         self.env_steps_before = sd["env_steps"]
@@ -176,7 +183,8 @@ class Trainer:
             agent = self.agent.state_dict()
         torch.save({"agent": agent, "episodes": self.episodes, "best_ms": self.best_ms,
                     "best_eval_ms": self.best_eval_ms, "env_steps": self.env_steps(),
-                    "baseline_laps": self.baseline.state()}, tmp)
+                    "baseline_laps": self.baseline.state(),
+                    "observation": self.cfg["env"].get("observation", "image")}, tmp)
         tmp.replace(self.ckpt)
         return self.ckpt
 
@@ -401,7 +409,7 @@ class Trainer:
         own_save = hooks is None
         hooks = hooks or TrainerHooks()
 
-        game = self.game or GameInterface(self.cfg, capture=True)
+        game = self.game or GameInterface(self.cfg, capture=uses_camera(self.cfg["env"]))
         env = TMEnv(self.cfg, game, self.tracker)
         learner = threading.Thread(target=self._learner, name="learner", daemon=True)
         csv_path = self.run_dir / "episodes.csv"

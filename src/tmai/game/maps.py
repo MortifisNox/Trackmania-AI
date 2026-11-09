@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -17,13 +16,10 @@ MAPS = {
 
 
 def documents_dir() -> Path:
-    """The real Documents folder (often redirected to OneDrive)."""
-    try:
-        from win32com.shell import shell, shellcon
+    """The Documents folder the game uses (inside the Proton/Wine prefix on Linux)."""
+    from tmai.game.paths import documents_dir as find
 
-        return Path(shell.SHGetFolderPath(0, shellcon.CSIDL_PERSONAL, None, 0))
-    except ImportError:
-        return Path(os.path.expanduser("~")) / "Documents"
+    return find()
 
 
 def my_maps_dir(documents: Path | None = None) -> Path:

@@ -33,9 +33,48 @@ def check_python(version: tuple = sys.version_info[:3]) -> Check:
 
 
 def check_os(system: str = platform.system()) -> Check:
-    if system != "Windows":
-        return Check("OS", WARN, f"{system}; the game side only runs on Windows")
-    return Check("OS", OK, f"Windows {platform.release()}")
+    if system == "Windows":
+        return Check("OS", OK, f"Windows {platform.release()}")
+    if system == "Linux":
+        return Check("OS", OK, f"Linux {platform.release()}; the game runs under Proton or Wine")
+    return Check("OS", WARN, f"{system}; only Windows and Linux are supported")
+
+
+def check_observation(cfg: dict, system: str = platform.system()) -> Check:
+    mode = cfg["env"]["observation"]
+    if mode == "image" and system != "Windows":
+        return Check("Observation", FAIL, "image needs Windows window capture; set observation to state "
+                     "(tmai_settings.json, or --set env.observation=state)")
+    if mode == "image":
+        return Check("Observation", OK, "image: camera frames plus game state")
+    return Check("Observation", OK, "state: game state from the plugin, no camera")
+
+
+def check_uinput(path: Path = Path("/dev/uinput")) -> Check:
+    """Linux: vgamepad creates its virtual pad through /dev/uinput."""
+    if not path.exists():
+        return Check("uinput", FAIL, "/dev/uinput missing; run: sudo modprobe uinput (see docs/SETUP_LINUX.md)")
+    if not os.access(path, os.R_OK | os.W_OK):
+        return Check("uinput", FAIL, "no access to /dev/uinput; add the udev rule in docs/SETUP_LINUX.md step 4, "
+                     "then log out and in")
+    return Check("uinput", OK, "read/write")
+
+
+def check_proton_launch_option(home: Path) -> Check:
+    """Openplanet loads as dinput8.dll, which Proton ignores unless told to load it."""
+    from tmai.game.paths import STEAM_APP_ID, steam_roots
+
+    configs = [c for root in steam_roots(home) for c in (root / "userdata").glob("*/config/localconfig.vdf")]
+    if not configs:
+        return Check("Launch option", WARN, "no Steam config found; if you play through Steam, set the launch "
+                     'option WINEDLLOVERRIDES="dinput8=n,b" %command%')
+    for vdf in configs:
+        text = vdf.read_text(errors="replace")
+        at = text.find(f'"{STEAM_APP_ID}"')
+        if at >= 0 and "dinput8" in text[at:at + 4000]:
+            return Check("Launch option", OK, "Steam loads Openplanet (dinput8 override set)")
+    return Check("Launch option", WARN, 'Trackmania > Properties > Launch options in Steam should be '
+                 'WINEDLLOVERRIDES="dinput8=n,b" %command% (restart Steam first if you just set it)')
 
 
 def check_torch() -> list[Check]:
@@ -69,10 +108,12 @@ def check_ram(cfg: dict, total_ram: int | None = None) -> Check:
         import psutil
 
         total_ram = psutil.virtual_memory().total
-    frame = cfg["env"]["frame_size"]
+    from tmai.rl.features import frame_size, state_dim
+
+    frame, sdim = frame_size(cfg["env"]), state_dim(cfg["env"])
     capacity = cfg["replay"]["capacity"]
-    need = budget.replay_bytes(capacity, frame)
-    suggested = budget.suggest_replay_capacity(total_ram, frame)
+    need = budget.replay_bytes(capacity, frame, sdim)
+    suggested = budget.suggest_replay_capacity(total_ram, frame, state_dim=sdim)
     detail = (
         f"{total_ram / GIB:.0f} GiB RAM; replay of {capacity:,} needs {need / GIB:.1f} GiB, "
         f"suggested capacity {suggested:,}"
@@ -112,15 +153,28 @@ def check_nvidia_smi() -> Check:
     return Check("NVIDIA driver", OK, found)
 
 
-def run_checks(cfg: dict, home: Path | None = None) -> list[Check]:
-    home = home or Path(os.environ.get("USERPROFILE") or Path.home())
-    checks = [check_python(), check_os(), check_nvidia_smi()]
+def run_checks(cfg: dict, home: Path | None = None, system: str = platform.system()) -> list[Check]:
+    from tmai.game.paths import game_user_dir
+
+    linux = system == "Linux"
+    home = home or game_user_dir(system=system)
+    checks = [check_python(), check_os(system), check_observation(cfg, system), check_nvidia_smi()]
     checks += check_torch()
-    checks.append(check_module("vgamepad", "Virtual gamepad", "pip install vgamepad and accept the ViGEmBus driver"))
-    checks.append(check_module("dxcam", "Screen capture", 'pip install -e ".[game]"'))
+    if linux:
+        checks.append(check_uinput())
+        checks.append(check_module("vgamepad", "Virtual gamepad",
+                                   'pip install -e ".[game]" (needs libevdev: sudo dnf install libevdev)'))
+    else:
+        checks.append(check_module("vgamepad", "Virtual gamepad", "pip install vgamepad and accept the ViGEmBus driver"))
+    if cfg["env"]["observation"] == "image":
+        checks.append(check_module("dxcam", "Screen capture", 'pip install -e ".[game]"'))
     checks.append(check_module("cv2", "OpenCV", 'pip install -e ".[game]"'))
     checks.append(check_ram(cfg))
     checks += check_openplanet(home)
+    if linux:
+        checks.append(Check("Game folder", OK if (home / "OpenplanetNext").is_dir() else WARN,
+                            f"{home} (set TMAI_GAME_USER_DIR to use another prefix)"))
+        checks.append(check_proton_launch_option(Path.home()))
     checks.append(check_disk(Path(cfg["run"]["output_dir"])))
     return checks
 

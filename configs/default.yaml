@@ -10,10 +10,16 @@ run:
 
 env:
   step_hz: 20                 # control frequency (TMRL uses 20 Hz too)
+  # What the policy sees. image: camera frames for the CNN plus the state vector
+  # (Windows only, it needs window capture). state: no camera; the policy drives
+  # from the Openplanet plugin's game state and the reference line alone, which
+  # works on Linux too. A run keeps the mode it started with.
+  observation: image
   frame_size: 64              # square grayscale frames fed to the CNN
   frame_stack: 4
   lookahead_points: 10        # reference-line points ahead of the car, in car frame
   lookahead_spacing_m: 10.0
+  lookahead_growth: 1.0       # each gap is this times the one before (state mode suggests 1.1)
   episode_timeout_s: 120      # hard cap per attempt; lap length should fit inside
   stuck_timeout_s: 3.0        # reset if speed stays below stuck_speed_kmh this long
   stuck_speed_kmh: 10.0
