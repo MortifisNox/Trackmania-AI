@@ -39,7 +39,9 @@ AGENT_LAPS_KEEP = 20
 
 
 def openplanet_dir() -> Path:
-    return Path(os.environ.get("USERPROFILE") or Path.home()) / "OpenplanetNext"
+    from tmai.game import paths
+
+    return paths.openplanet_dir()
 
 
 class AgentLaps:

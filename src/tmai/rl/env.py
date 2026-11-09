@@ -11,7 +11,7 @@ import numpy as np
 
 from tmai.game.clock import RealtimeClock
 from tmai.game.episode import EpisodeMonitor
-from tmai.rl.features import state_vector, to_controls
+from tmai.rl.features import frame_size, state_vector, to_controls
 from tmai.track.progress import ProgressTracker, StepInfo
 
 # Episode ends after which the future is worth nothing (no bootstrapping).
@@ -29,7 +29,10 @@ class Obs:
 class TMEnv:
     def __init__(self, cfg: dict, game, tracker: ProgressTracker, clock: RealtimeClock | None = None):
         env = cfg["env"]
+        self.env_cfg = env
         self.game, self.tracker = game, tracker
+        # State mode keeps no camera; an empty frame stands in for it everywhere.
+        self._no_frame = np.zeros((frame_size(env),) * 2, dtype=np.uint8)
         self.stack = env["frame_stack"]
         self.clock = clock or RealtimeClock(env["step_hz"])
         self.monitor = EpisodeMonitor(env["episode_timeout_s"], env["stuck_timeout_s"], env["stuck_speed_kmh"])
@@ -39,8 +42,10 @@ class TMEnv:
         self.lateness: list[float] = []
 
     def _obs(self, frame, tel, lookahead) -> Obs:
+        if frame is None:
+            frame = self._no_frame
         self._frames.append(frame)
-        state = state_vector(tel, lookahead, self._prev_action)
+        state = state_vector(tel, lookahead, self._prev_action, self.env_cfg)
         return Obs(np.stack(self._frames), state, frame)
 
     def reset(self) -> Obs:
@@ -50,6 +55,8 @@ class TMEnv:
         self.clock.reset()
         self._prev_action = np.array([0.0, -1.0, -1.0], dtype=np.float32)   # no input
         frame, tel = self.game.observe()
+        if frame is None:
+            frame = self._no_frame
         self.tracker.reset(tel)
         self.last_tel = tel
         self._frames.clear()
@@ -63,6 +70,8 @@ class TMEnv:
         self.game.act(to_controls(action))
         self.lateness.append(self.clock.tick())
         frame, tel = self.game.observe()
+        if frame is None:
+            frame = self._no_frame
         self.last_tel = tel
         info = self.tracker.step(tel)
         reason = info.done or self.monitor.check(tel)

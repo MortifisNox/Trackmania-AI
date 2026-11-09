@@ -60,7 +60,8 @@ class ProgressTracker:
     def lookahead(self, tel: Telemetry) -> np.ndarray:
         """Reference points ahead of the car's current progress, in its frame."""
         return self.ref.lookahead(tel.pos, tel.dir, tel.up, self._s,
-                                  self.env["lookahead_points"], self.env["lookahead_spacing_m"])
+                                  self.env["lookahead_points"], self.env["lookahead_spacing_m"],
+                                  self.env.get("lookahead_growth", 1.0))
 
     @property
     def ended(self) -> str | None:
@@ -125,7 +126,8 @@ class ProgressTracker:
 
         self._done = done
         lookahead = self.ref.lookahead(tel.pos, tel.dir, tel.up, s,
-                                       self.env["lookahead_points"], self.env["lookahead_spacing_m"])
+                                       self.env["lookahead_points"], self.env["lookahead_spacing_m"],
+                                       self.env.get("lookahead_growth", 1.0))
         return StepInfo(
             reward=float(sum(terms.values())), progress_m=s,
             progress=s / self.ref.length if self.ref.length else 0.0,

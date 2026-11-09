@@ -12,8 +12,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from tmai.budget import ACTION_DIM, STATE_DIM
-from tmai.rl.networks import Actor, Critic, Encoder, random_shift
+from tmai.budget import ACTION_DIM
+from tmai.rl.features import state_dim, uses_camera
+from tmai.rl.networks import Actor, Critic, make_encoder, random_shift
 
 
 class Policy:
@@ -23,8 +24,9 @@ class Policy:
     def __init__(self, cfg: dict, device: str | torch.device = "cpu"):
         m, env = cfg["model"], cfg["env"]
         self.device = torch.device(device)
-        self.encoder = Encoder(env["frame_stack"], env["frame_size"], m["encoder_channels"], m["hidden_dim"]).to(self.device)
-        self.actor = Actor(m["hidden_dim"], STATE_DIM, ACTION_DIM, m["hidden_dim"]).to(self.device)
+        encoder, feat = make_encoder(env, m)
+        self.encoder = encoder.to(self.device)
+        self.actor = Actor(feat, state_dim(env), ACTION_DIM, m["hidden_dim"]).to(self.device)
         self.encoder.requires_grad_(False)
         self.actor.requires_grad_(False)
 
@@ -45,10 +47,12 @@ class SACAgent:
         m, t, env = cfg["model"], cfg["train"], cfg["env"]
         self.device = torch.device(device)
         self.gamma, self.tau = t["gamma"], t["tau"]
-        feat = m["hidden_dim"]
-        self.encoder = Encoder(env["frame_stack"], env["frame_size"], m["encoder_channels"], feat).to(self.device)
-        self.critic = Critic(feat, STATE_DIM, ACTION_DIM, m["hidden_dim"], m["num_critics"], m["critic_dropout"]).to(self.device)
-        self.actor = Actor(feat, STATE_DIM, ACTION_DIM, m["hidden_dim"]).to(self.device)
+        encoder, feat = make_encoder(env, m)
+        sdim = state_dim(env)
+        self.augment = uses_camera(env)   # DrQ image shifts; nothing to shift in state mode
+        self.encoder = encoder.to(self.device)
+        self.critic = Critic(feat, sdim, ACTION_DIM, m["hidden_dim"], m["num_critics"], m["critic_dropout"]).to(self.device)
+        self.actor = Actor(feat, sdim, ACTION_DIM, m["hidden_dim"]).to(self.device)
         self.encoder_target = copy.deepcopy(self.encoder).requires_grad_(False)
         self.critic_target = copy.deepcopy(self.critic).requires_grad_(False)
         self.log_alpha = torch.tensor(np.log(0.1), device=self.device, requires_grad=True)
@@ -73,7 +77,9 @@ class SACAgent:
 
     def update(self, batch: dict) -> dict:
         b = self._tensors(batch)
-        frames, next_frames = random_shift(b["frames"]), random_shift(b["next_frames"])
+        frames, next_frames = b["frames"], b["next_frames"]
+        if self.augment:
+            frames, next_frames = random_shift(frames), random_shift(next_frames)
         with self._autocast():
             with torch.no_grad():
                 next_feat = self.encoder(next_frames)

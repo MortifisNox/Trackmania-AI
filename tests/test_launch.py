@@ -102,3 +102,17 @@ def test_start_creates_the_settings_file_first(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, "SETTINGS_FILE", tmp_path / "tmai_settings.json")
     assert cli.main(["start"]) == 1
     assert (tmp_path / "tmai_settings.json").read_text() == launch.EXAMPLE_FILE.read_text()
+
+
+def test_observation_auto_follows_the_os(tmp_path):
+    settings = launch.load_settings(_write(tmp_path, map_name="A"))
+    win = load_config(overrides=launch.to_overrides(settings, system="Windows"))
+    lin = load_config(overrides=launch.to_overrides(settings, system="Linux"))
+    assert win["env"]["observation"] == "image" and win["env"]["lookahead_points"] == 10
+    assert lin["env"]["observation"] == "state" and lin["env"]["lookahead_points"] == 20
+    forced = launch.load_settings(_write(tmp_path, map_name="A", observation="state",
+                                         extra_settings={"env.lookahead_points": 12}))
+    cfg = load_config(overrides=launch.to_overrides(forced, system="Windows"))
+    assert cfg["env"]["observation"] == "state" and cfg["env"]["lookahead_points"] == 12
+    with pytest.raises(launch.SettingsError):
+        launch.load_settings(_write(tmp_path, map_name="A", observation="pixels"))

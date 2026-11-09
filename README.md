@@ -1,8 +1,10 @@
 # Trackmania-AI
 
 An AI that teaches itself to drive a Trackmania (2020) map and keeps getting
-faster for as long as you let it train. It runs on one Windows gaming laptop
-(RTX 4050 Laptop GPU, 6 GB) next to the game.
+faster for as long as you let it train. It runs on one gaming laptop
+(RTX 4050 Laptop GPU, 6 GB) next to the game, on Windows or on Linux (Proton).
+On Windows it can drive from the camera image plus game state; on Linux it
+drives from game state alone, read by its Openplanet plugin.
 
 You drive a few laps of a map yourself; the AI starts from your driving and
 then learns from its own attempts, about 20 decisions per second. You watch it
@@ -30,7 +32,7 @@ lap as an in-game replay.
 
 | I want to... | Read |
 |---|---|
-| set the laptop up for the first time | [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md) |
+| set the laptop up for the first time | [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md) or [docs/SETUP_LINUX.md](docs/SETUP_LINUX.md) |
 | know the rules that keep my account safe (read before training) | [docs/SAFE_USE.md](docs/SAFE_USE.md) |
 | update, train, watch and stop (day to day) | [docs/EVERYDAY_USE.md](docs/EVERYDAY_USE.md) |
 | fix something that went wrong | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
@@ -38,10 +40,11 @@ lap as an in-game replay.
 | understand stopping, resuming, the report and the replay | [docs/RUN_LIFECYCLE.md](docs/RUN_LIFECYCLE.md) |
 | record demo laps for a new map | [docs/PHASE2_TESTING.md](docs/PHASE2_TESTING.md) |
 | see how it works and why | [docs/DESIGN.md](docs/DESIGN.md), [docs/PLAN.md](docs/PLAN.md) |
+| give the AI more game state through the plugin | [docs/PLUGIN_RESEARCH.md](docs/PLUGIN_RESEARCH.md) |
 
 ## Everyday use in short
 
-Double-click **`start_training.bat`**. The first time it creates
+Double-click **`start_training.bat`** (on Linux, run **`./start_training.sh`**). The first time it creates
 `tmai_settings.json` and opens it: write your map name (and whether it has
 checkpoints), save, and double-click again. From then on one click updates
 the code, reinstalls the plugins, starts the dashboard at

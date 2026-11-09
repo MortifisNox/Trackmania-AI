@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 from tmai import __version__
@@ -50,7 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _openplanet_dir() -> Path:
-    return Path(os.environ.get("USERPROFILE") or Path.home()) / "OpenplanetNext"
+    from tmai.game.paths import openplanet_dir
+
+    return openplanet_dir()
 
 
 def install_plugins() -> None:

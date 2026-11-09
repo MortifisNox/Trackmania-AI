@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Installed on the Windows gaming machine only. PyTorch itself is installed
-# separately from the CUDA wheel index (see docs/SETUP_WINDOWS.md).
+# Installed on the gaming machine (Windows or Linux). PyTorch itself is installed
+# separately from the CUDA wheel index (see docs/SETUP_WINDOWS.md or docs/SETUP_LINUX.md).
 game = [
     "vgamepad>=0.1.0",
     "pywin32>=306; sys_platform == 'win32'",

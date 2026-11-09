@@ -8,6 +8,7 @@ configs/default.yaml, so there is still only one set of config rules.
 from __future__ import annotations
 
 import json
+import platform
 import shutil
 import socket
 import subprocess
@@ -35,6 +36,7 @@ DEFAULTS = {
     "open_browser": True,
     "fresh_start": False,
     "train_minutes": None,
+    "observation": "auto",
     "capture_backend": "window",
     "dashboard_port": 8080,
     "extra_settings": {},
@@ -66,6 +68,8 @@ def load_settings(path: str | Path = SETTINGS_FILE) -> dict:
         raise SettingsError("map_name must be the map's name, for example \"Test1\"")
     if not isinstance(settings["extra_settings"], dict):
         raise SettingsError('extra_settings must look like {"train.batch_size": 128}')
+    if str(settings["observation"]).lower() not in ("auto", "image", "state"):
+        raise SettingsError('observation must be "auto", "image" or "state"')
     if settings["train_minutes"] is not None and not isinstance(settings["train_minutes"], (int, float)):
         raise SettingsError("train_minutes must be a number of minutes, or null to train until stopped")
     return settings
@@ -79,13 +83,33 @@ def restart_button(settings: dict) -> str:
     return button
 
 
+# Camera-free driving: 20 line points from 5 m apart growing to ~30 m apart,
+# reaching ~290 m up the road, since there is no image to show what is coming.
+# Without frames a transition is ~0.35 KB instead of ~4.2 KB, so the replay
+# keeps 2M steps (~28 h of driving) in about 0.7 GB.
+STATE_PRESET = {"env.lookahead_points": 20, "env.lookahead_spacing_m": 5.0, "env.lookahead_growth": 1.1,
+                "replay.capacity": 2_000_000}
+
+
+def observation(settings: dict, system: str | None = None) -> str:
+    """"auto" drives from the camera on Windows and from game state elsewhere,
+    since window capture only exists on Windows."""
+    mode = str(settings["observation"]).lower()
+    if mode == "auto":
+        return "image" if (system or platform.system()) == "Windows" else "state"
+    return mode
+
+
 def run_name(settings: dict) -> str:
     return (settings["run_name"] or settings["map_name"]).strip()
 
 
-def to_overrides(settings: dict) -> list[str]:
+def to_overrides(settings: dict, system: str | None = None) -> list[str]:
     """The settings as `section.key=value` config overrides."""
+    mode = observation(settings, system)
     values = {
+        **(STATE_PRESET if mode == "state" else {}),
+        "env.observation": mode,
         "run.track": settings["map_name"].strip(),
         "run.name": run_name(settings),
         "env.restart_button": restart_button(settings),
@@ -119,8 +143,15 @@ def start_dashboard(settings_path: Path, cfg: dict) -> subprocess.Popen | None:
         print(f"dashboard already running on http://{host}:{port}")
         return None
     flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)  # Windows: a window of its own
+    out = None
+    if not flags:
+        # No new console elsewhere: keep the dashboard's messages out of the training output.
+        log = Path(cfg["run"]["output_dir"]) / "dashboard.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        out = open(log, "ab")
+        print(f"dashboard messages go to {log}")
     proc = subprocess.Popen([sys.executable, "-m", "tmai", "--settings", str(settings_path), "dashboard"],
-                            cwd=REPO_ROOT, creationflags=flags)
+                            cwd=REPO_ROOT, creationflags=flags, stdout=out, stderr=out)
     for _ in range(40):
         if _port_open(host, port) or proc.poll() is not None:
             break
@@ -131,7 +162,8 @@ def start_dashboard(settings_path: Path, cfg: dict) -> subprocess.Popen | None:
 def start(cfg: dict, settings: dict, settings_path: Path, train) -> int:
     """Everything after the config is resolved. `train(cfg, minutes, fresh)` runs training."""
     run, env, dash = cfg["run"], cfg["env"], cfg["dashboard"]
-    print(f"map {run['track']!r}, run {run['name']!r}, restart button {env['restart_button']}, "
+    print(f"map {run['track']!r}, run {run['name']!r}, drives from {env['observation']}, "
+          f"restart button {env['restart_button']}, "
           f"results in {Path(run['output_dir']) / run['name']}")
 
     if settings["reinstall_plugin"]:
