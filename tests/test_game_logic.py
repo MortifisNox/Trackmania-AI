@@ -164,8 +164,36 @@ def test_restart_that_respawns_at_a_checkpoint_is_refused():
     game = GameInterface.__new__(GameInterface)
     game.telemetry, game.pad, game.restart_button = Tel(), Pad(), "B"
     with pytest.raises(CheckpointRespawn):
-        game.restart()
+        game.restart(settle_s=0.0)
     assert interface.CheckpointRespawn is CheckpointRespawn
+
+
+def test_restart_waits_for_a_late_clock_reset():
+    """Under Proton the race clock can still show the old run for a few frames
+    after Give up teleports the car back; that is a restart, not a respawn."""
+    from tmai.game import protocol
+    from tmai.game.interface import GameInterface
+
+    playing = protocol.FLAG_PLAYER | protocol.FLAG_PLAYING
+    frames = iter([
+        protocol.decode(protocol.encode(seq=1, flags=playing, race_time_ms=107000, pos=(100.0, 0.0, 0.0), speed=30.0)),
+        protocol.decode(protocol.encode(seq=2, flags=playing, race_time_ms=107050, pos=(0.0, 0.0, 0.0))),
+        protocol.decode(protocol.encode(seq=3, flags=playing, race_time_ms=107100, pos=(0.0, 0.0, 0.0))),
+        protocol.decode(protocol.encode(seq=4, flags=playing, race_time_ms=-1500, pos=(0.0, 0.0, 0.0))),
+        protocol.decode(protocol.encode(seq=5, flags=playing, race_time_ms=0, pos=(0.0, 0.0, 0.0))),
+    ])
+
+    class Tel:
+        def wait(self, timeout, after_seq=None):
+            return next(frames)
+
+    class Pad:
+        def press_restart(self):
+            pass
+
+    game = GameInterface.__new__(GameInterface)
+    game.telemetry, game.pad, game.restart_button = Tel(), Pad(), "BACK"
+    assert game.restart().seq == 5
 
 
 def test_restart_gets_past_the_end_of_race_menu():
