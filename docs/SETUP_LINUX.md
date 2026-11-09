@@ -116,8 +116,8 @@ needed. Check the prompt starts with `(.venv)` before the `pip` lines.
 (`D:\AI Projects\Trackmania AI`), copy its `runs/tracks/` folder into the new
 `runs/tracks/`. That keeps your demo laps and reference lines, and the AI
 learns from them in state mode too. The old checkpoints learned from the
-camera and cannot continue in state mode, so start state training under a new
-`run_name`.
+camera and cannot continue in state mode. With `run_name` left empty, state
+training goes to `runs/<map>-state/` by itself, so the two never mix.
 
 ## 7. Plugins and maps
 

@@ -27,7 +27,7 @@ you will usually touch:
 | Setting | What to write |
 |---|---|
 | `map_name` | the map's name as the game shows it, e.g. `"Test1"` |
-| `run_name` | the folder under `runs\` for this training; leave `""` to use the map name, so every map keeps its own run. Your Test1 training from before the one-click start is in `runs\default`: write `"default"` here to continue it |
+| `run_name` | the folder under `runs\` for this training; leave `""` to use the map name (`<map>-state` in state mode, as on Linux), so every map keeps its own run. Your Test1 training from before the one-click start is in `runs\default`: write `"default"` here to continue it |
 | `map_has_checkpoints` | `true` or `false` |
 | `restart_button` | `"auto"` picks `BACK` (Give up, which you bind to View/Back in **Settings > Controls**) on maps with checkpoints and `B` on maps without; or name a button: `B`, `BACK`, `START`, `X`, `Y`, `A`, `LB`, `RB`, `DPAD_UP`... |
 | `fresh_start` | `true` once to start the run over; set it back to `false` after |

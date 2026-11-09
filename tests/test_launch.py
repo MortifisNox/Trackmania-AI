@@ -110,9 +110,31 @@ def test_observation_auto_follows_the_os(tmp_path):
     lin = load_config(overrides=launch.to_overrides(settings, system="Linux"))
     assert win["env"]["observation"] == "image" and win["env"]["lookahead_points"] == 10
     assert lin["env"]["observation"] == "state" and lin["env"]["lookahead_points"] == 20
+    assert win["run"]["name"] == "A" and lin["run"]["name"] == "A-state"   # a camera run cannot resume in state mode
+    named = launch.load_settings(_write(tmp_path, map_name="A", run_name="mine"))
+    assert load_config(overrides=launch.to_overrides(named, system="Linux"))["run"]["name"] == "mine"
     forced = launch.load_settings(_write(tmp_path, map_name="A", observation="state",
                                          extra_settings={"env.lookahead_points": 12}))
     cfg = load_config(overrides=launch.to_overrides(forced, system="Windows"))
     assert cfg["env"]["observation"] == "state" and cfg["env"]["lookahead_points"] == 12
     with pytest.raises(launch.SettingsError):
         launch.load_settings(_write(tmp_path, map_name="A", observation="pixels"))
+
+
+def test_commands_without_settings_drive_from_state_on_linux(capsys, monkeypatch):
+    monkeypatch.setattr(launch, "host_system", lambda: "Linux")
+    assert cli.main(["config"]) == 0
+    assert '"observation": "state"' in capsys.readouterr().out
+    monkeypatch.setattr(launch, "host_system", lambda: "Windows")
+    assert cli.main(["config"]) == 0
+    assert '"observation": "image"' in capsys.readouterr().out
+
+
+def test_commands_use_the_settings_file_when_present(tmp_path, capsys, monkeypatch):
+    path = _write(tmp_path, map_name="Test9", observation="state")
+    monkeypatch.setattr(launch, "SETTINGS_FILE", path)
+    assert cli.main(["config"]) == 0
+    out = capsys.readouterr().out
+    assert '"track": "Test9"' in out and '"observation": "state"' in out
+    assert cli.main(["--set", "run.track=Other", "config"]) == 0   # --set still wins
+    assert '"track": "Other"' in capsys.readouterr().out

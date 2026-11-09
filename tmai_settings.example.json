@@ -2,7 +2,7 @@
   "_help": {
     "how": "Copy this file to tmai_settings.json (start_training.bat does it for you), edit the values below, save, then double-click start_training.bat (Windows) or run ./start_training.sh (Linux). Lines starting with _ are notes and are ignored.",
     "map_name": "The map's name as the game shows it, e.g. Test1. Demo laps and the best replay are found by this name.",
-    "run_name": "Folder under runs/ for this training. Leave empty to use the map name, so each map keeps its own run.",
+    "run_name": "Folder under runs/ for this training. Leave empty to use the map name (plus -state in state mode), so each map keeps its own run.",
     "map_has_checkpoints": "true if the map has checkpoints. Only used when restart_button is auto.",
     "restart_button": "Gamepad button that restarts the attempt: auto, B, BACK, START, X, Y, A, LB, RB or a DPAD_ direction. auto = BACK (bind Give up to View/Back in Settings > Controls) on maps with checkpoints, B on maps without.",
     "menu_button": "Button that picks Improve on the end-of-race menu after a personal best. Usually A.",
