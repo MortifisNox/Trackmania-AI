@@ -40,19 +40,24 @@ class GameInterface:
     def act(self, action) -> tuple[float, float, float]:
         return self.pad.act(action)
 
-    def restart(self, timeout: float = 15.0, menu_after_s: float = 2.5) -> Telemetry:
+    def restart(self, timeout: float = 15.0, menu_after_s: float = 2.5, settle_s: float = 1.5) -> Telemetry:
         """Restart the run and return the first telemetry once the car may move.
 
         After a personal best the game shows its end-of-race menu (Improve, Save
         replay, ...), which ignores the restart button. If the run has not
         restarted after `menu_after_s` and the game is not in play, tap
         env.menu_button (A) to pick the menu's default, Improve, which starts the
-        run again; restart and menu presses alternate until one works."""
+        run again; restart and menu presses alternate until one works.
+
+        The race clock can lag the teleport by a few frames (seen under
+        Proton), so a clock that still reads the old run only counts as a
+        checkpoint respawn once it has kept running for `settle_s`."""
         before = self.telemetry.wait(5.0)
         self.pad.press_restart()
         pressed = last_press = time.monotonic()
         deadline = pressed + timeout
         restarted = False
+        restarted_at = 0.0
         presses = 1
         prev = tel = before
         while time.monotonic() < deadline:
@@ -64,6 +69,7 @@ class GameInterface:
                 continue   # some menus pause the plugin's packets
             if not restarted:
                 restarted = restart_detected(before, prev, tel, time.monotonic() - pressed)
+                restarted_at = time.monotonic()
                 prev = tel
                 if not restarted and not tel.playing and time.monotonic() - last_press > menu_after_s:
                     if presses % 2:
@@ -74,6 +80,8 @@ class GameInterface:
                     last_press = time.monotonic()
                 continue
             if tel.race_time_ms > 3000:
+                if time.monotonic() - restarted_at < settle_s:
+                    continue   # the clock may not have reset yet
                 # The clock kept running: the button respawned at a checkpoint
                 # instead of restarting the run. Episodes must start from the line.
                 raise CheckpointRespawn(
