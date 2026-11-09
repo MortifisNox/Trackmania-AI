@@ -197,3 +197,22 @@ def focus_test(cfg: dict, out_dir: Path) -> int:
     finally:
         game.close()
     return 0 if all(results) else 1
+
+
+def press_button(name: str, wait_s: float, pad=None, sleep=time.sleep, log=print) -> int:
+    """Create the virtual pad, wait, then tap one button. The game binds controls
+    per device, so Give up has to be bound by pressing Back on this pad itself:
+    start this, open Settings > Controls, click the Give up box, and wait."""
+    from tmai.game.gamepad import BUTTONS, Gamepad
+
+    if name not in BUTTONS:
+        log(f"unknown button {name!r}; pick one of {', '.join(sorted(BUTTONS))}")
+        return 2
+    gp = Gamepad(pad=pad) if pad is not None else Gamepad()
+    log(f"virtual pad ready. In the game: Settings > Controls, click the box to bind; "
+        f"pressing {name} in {wait_s:.0f} s")
+    sleep(wait_s)
+    gp.press(name, 0.3)
+    sleep(1.0)
+    log(f"pressed {name}")
+    return 0

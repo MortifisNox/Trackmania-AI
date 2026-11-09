@@ -78,6 +78,7 @@ your settings file to any command.
 | `tmai config` | prints every setting with its current value |
 | `tmai telemetry` | prints live telemetry from the game |
 | `tmai gamepad-test` | steers, brakes and restarts through the virtual pad |
+| `tmai press-button BACK` | the virtual pad presses one button after 15 s, so you can bind Give up to it in Settings > Controls |
 | `tmai capture-test` | measures screen capture and saves what the AI sees |
 | `tmai focus-test` | checks driving and capture while the game is in the background |
 | `tmai drive-test` | drives full throttle at 20 Hz and reports timing |
