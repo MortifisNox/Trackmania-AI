@@ -199,3 +199,28 @@ def test_restart_gets_past_the_end_of_race_menu():
     game.telemetry, game.pad, game.restart_button, game.menu_button = Tel(), Pad(), "BACK", "A"
     tel = game.restart(timeout=5.0, menu_after_s=0.0)
     assert pressed == ["BACK", "A"] and tel.race_time_ms == 0
+
+
+def test_press_button_taps_one_button():
+    from tmai.game import checks
+
+    class Pad:
+        def __init__(self):
+            self.events = []
+
+        def reset(self):
+            pass
+
+        def update(self):
+            pass
+
+        def press_button(self, button):
+            self.events.append(("down", button))
+
+        def release_button(self, button):
+            self.events.append(("up", button))
+
+    pad, lines = Pad(), []
+    assert checks.press_button("BACK", 0, pad=pad, sleep=lambda s: None, log=lines.append) == 0
+    assert pad.events == [("down", "BACK"), ("up", "BACK")]
+    assert checks.press_button("Z", 0, pad=pad, sleep=lambda s: None, log=lines.append) == 2

@@ -28,6 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("telemetry", help="print live telemetry from the plugin")
     p.add_argument("--seconds", type=float, default=15.0)
     sub.add_parser("gamepad-test", help="steer, brake and restart through the virtual pad")
+    p = sub.add_parser("press-button", help="press one virtual-pad button after a delay, to bind it in the game's controls")
+    p.add_argument("button", help="A, B, X, Y, BACK, START, LB, RB or DPAD_UP/DOWN/LEFT/RIGHT")
+    p.add_argument("--wait", type=float, default=15.0, help="seconds before the press (default 15)")
     sub.add_parser("capture-test", help="measure screen capture and save what the agent sees")
     sub.add_parser("focus-test", help="check driving and capture work while the game is not focused")
     p = sub.add_parser("record-demo", help="record your laps of run.track and build its reference line")
@@ -174,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         return checks.watch_telemetry(cfg, args.seconds)
     if args.command == "gamepad-test":
         return checks.gamepad_test(cfg)
+    if args.command == "press-button":
+        return checks.press_button(args.button.upper(), args.wait)
     if args.command == "capture-test":
         return checks.capture_test(cfg, Path(cfg["run"]["output_dir"]))
     if args.command == "focus-test":

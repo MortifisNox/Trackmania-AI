@@ -137,8 +137,12 @@ In game: **F3 > Developer > (Re)load plugin > TMAI Telemetry**, then
   so keep them off.
 - Graphics preset **Very low / performance**, frame limiter **60 FPS**:
   training shares the GPU with the game.
-- **Settings > Controls** (gamepad): bind **Give up** to **View/Back**, as on
-  Windows.
+- **Settings > Controls** (gamepad): bind **Give up** to **View/Back**. The
+  game keeps bindings per controller and the AI's virtual pad is its own
+  controller, so bind it from that pad: run `tmai press-button BACK`, switch
+  to the game, click the box next to Give up, and the pad presses Back after
+  15 seconds. Without this, Back respawns at a checkpoint and training stops
+  with "BACK respawned at a checkpoint".
 - Keep the game window focused while training, at least until
   `tmai gamepad-test` shows it takes input in the background.
 
