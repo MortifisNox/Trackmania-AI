@@ -681,3 +681,16 @@ def test_stop_or_pause_during_restart_aborts_without_holding_gas(tmp_path):
     with pytest.raises(RestartAborted):
         trainer.run_episode(env)
     assert trainer.game.pad.last == (0.0, 0.0, 0.0)
+
+
+def test_training_refuses_the_cpu_unless_allowed(tmp_path, monkeypatch):
+    from tmai.rl import train as train_mod
+
+    cfg = small_cfg(tmp_path)
+    make_track(tmp_path, cfg)
+    monkeypatch.setattr(train_mod, "pick_device", lambda: torch.device("cpu"))
+    with pytest.raises(RuntimeError, match="CUDA is not available"):
+        train_mod.Trainer(cfg, game=FakeGame(), log=lambda *_: None)
+    cfg["gpu"]["allow_cpu"] = True
+    trainer = train_mod.Trainer(cfg, game=FakeGame(), log=lambda *_: None)
+    assert trainer.device.type == "cpu"

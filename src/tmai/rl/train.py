@@ -69,7 +69,17 @@ class Trainer:
                  log=print):
         self.cfg, self.log = cfg, log
         run, env, t = cfg["run"], cfg["env"], cfg["train"]
-        self.device = device or pick_device()
+        if device is None:
+            device = pick_device()
+            if device.type == "cpu" and not cfg["gpu"].get("allow_cpu", False):
+                raise RuntimeError(
+                    "CUDA is not available, so training would run on the CPU, far too slowly to keep up with "
+                    "the game. Check `nvidia-smi`: 'Driver/library version mismatch' means the NVIDIA driver "
+                    "was updated, so rebuild its module (sudo akmods --force) and reboot. To train on the CPU "
+                    "anyway, pass --set gpu.allow_cpu=true.")
+        self.device = device
+        if self.device.type == "cuda":
+            self.log(f"GPU: {torch.cuda.get_device_name(self.device)}")
         if self.device.type == "cuda":
             index = self.device.index if self.device.index is not None else torch.cuda.current_device()
             torch.cuda.set_per_process_memory_fraction(cfg["gpu"]["max_vram_fraction"], index)

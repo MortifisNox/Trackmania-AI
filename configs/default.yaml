@@ -143,6 +143,9 @@ replay:
   snapshot_every_min: 30
 
 gpu:
+  # Training stops if CUDA is not available instead of quietly running on the
+  # CPU (far too slow for the real-time loop). true = allow the CPU anyway.
+  allow_cpu: false
   # Hard cap on the share of VRAM PyTorch may allocate, leaving room for the game.
   max_vram_fraction: 0.5
   # Planned thermal governor, not used yet. NVML temperature thresholds (deg C):
