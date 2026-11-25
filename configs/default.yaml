@@ -29,6 +29,11 @@ env:
   # Hold full gas during the 3-2-1 countdown after a restart so the car leaves
   # the line at GO like a human without losing a step to reaction time.
   launch_hold_gas: true
+  # Gas and brake are two separate policy outputs. Trackmania 2020 reads both
+  # pedals as on/off (only steering is analog), so with this on each output is
+  # a button: above 0 presses the pedal fully, otherwise it is released.
+  # false sends the half-pressed trigger and lets the game decide.
+  digital_pedals: true
   episode_timeout_s: 120      # hard cap per attempt; lap length should fit inside
   stuck_timeout_s: 3.0        # reset if speed stays below stuck_speed_kmh this long
   stuck_speed_kmh: 10.0

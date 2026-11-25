@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -27,11 +28,23 @@ from tmai.track.store import TrackStore
 
 EPISODE_FIELDS = ["episode", "wall_time", "steps", "end", "race_time_s", "progress", "reward",
                   "env_steps", "updates", "critic_loss", "actor_loss", "alpha", "q", "entropy",
-                  "late_p99_ms", "q_clip_frac"]
+                  "late_p99_ms", "q_clip_frac", "gas_pct", "brake_pct"]
 EVAL_FIELDS = ["episode", "wall_time", "env_steps", "end", "lap_ms", "race_time_s", "progress", "best_eval_ms"]
 STALL_WARN_S = 0.1   # longest race-clock gap beyond one step that the log points out
 SYNC_EVERY = 20   # learner updates between refreshes of the driving policy
 NO_INPUT = np.array([0.0, -1.0, -1.0], dtype=np.float32)   # the previous action at the start
+
+
+def _tee_log(log, path: Path):
+    """Print as before and also append each line, timestamped, to the run's train.log."""
+    def tee(msg, *args, **kwargs):
+        log(msg, *args, **kwargs)
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+        except OSError:
+            pass
+    return tee
 
 
 def anneal(start: float, end: float, steps: int, done: int) -> float:
@@ -53,22 +66,25 @@ def _prepare_episode_log(path: Path) -> bool:
         header = next(csv.reader(f), None)
     if header is None:
         return True
-    if header == EPISODE_FIELDS[:-1]:
+    if len(header) < len(EPISODE_FIELDS) and header == EPISODE_FIELDS[:len(header)]:
         with atomic_open(path, "w") as out:
             writer = csv.writer(out, lineterminator="\n")
             writer.writerow(EPISODE_FIELDS)
             with path.open(newline="", encoding="utf-8") as f:
                 rows = csv.reader(f)
                 next(rows)
-                writer.writerows([*row, ""] for row in rows if len(row) == len(header))
+                pad = [""] * (len(EPISODE_FIELDS) - len(header))
+                writer.writerows([*row, *pad] for row in rows if len(row) == len(header))
     return False
 
 
 class Trainer:
     def __init__(self, cfg: dict, game=None, device: torch.device | None = None, fresh: bool = False,
                  log=print):
-        self.cfg, self.log = cfg, log
         run, env, t = cfg["run"], cfg["env"], cfg["train"]
+        self.run_dir = Path(run["output_dir"]) / run["name"]
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.cfg, self.log = cfg, _tee_log(log, self.run_dir / "train.log")
         if device is None:
             device = pick_device()
             if device.type == "cpu" and not cfg["gpu"].get("allow_cpu", False):
@@ -101,9 +117,7 @@ class Trainer:
                                      rw.get("pace_baseline_percentile", 25.0))
         self.tracker = ProgressTracker(ref, cfg, SplitTracker.load(self.store.splits), self.baseline)
 
-        self.run_dir = Path(run["output_dir"]) / run["name"]
         self.ckpt = self.run_dir / "checkpoints" / "latest.pt"
-        self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.lidar = None
         if uses_lidar(env):
@@ -118,6 +132,8 @@ class Trainer:
             self.log("LiDAR: OFF" + ("" if uses_camera(env) else " (state mode drives without seeing the walls; "
                                      "set env.lidar=true to turn it on)"))
 
+        self.log("Pedals: " + ("digital (gas and brake each pressed fully or released, like the game reads them)"
+                               if env.get("digital_pedals", True) else "analog trigger depth (the game decides on/off)"))
         self.best_laps: list[dict] = []   # agent's fastest finished laps, fastest first
         self.online = ReplayBuffer(cfg["replay"]["capacity"], frame_size(env), env["frame_stack"], state_dim(env))
         self.agent = SACAgent(cfg, self.device)
@@ -384,7 +400,10 @@ class Trainer:
               "race_time_s": (lap_ms if lap_ms is not None else tel.race_time_ms) / 1000,
               "progress": info.progress if info else 0.0,
               "late_p99_ms": late[int(0.99 * (len(late) - 1))] * 1000, "trace": trace,
-              "deterministic": deterministic, "stall_s": stall_s}
+              "deterministic": deterministic, "stall_s": stall_s,
+              # How often the game itself saw each pedal pressed (telemetry, not the policy's output).
+              "gas_pct": 100.0 * float(np.mean([x.gas > 0.5 for x in tels[1:]])) if len(tels) > 1 else None,
+              "brake_pct": 100.0 * float(np.mean([x.brake > 0.5 for x in tels[1:]])) if len(tels) > 1 else None}
         if lap_ms is not None:
             ep["lap"] = {"frames": frames, "tels": tels, "actions": actions}
         return ep
@@ -397,6 +416,16 @@ class Trainer:
         times = np.minimum([t for _, t, *_ in ep["trace"]], ep["lap_ms"]) / 1000.0
         times[-1] = ep["lap_ms"] / 1000.0
         self.baseline.add_lap(pos, times)
+
+    def record_splits(self, ep: dict) -> bool:
+        """A finished lap faster than the best one becomes the best splits, saved to
+        splits.json: the split bonus at each checkpoint and the dashboard compare
+        against them. Before this, best splits were only set when a lap replaced
+        the reference line, so on most tracks the split bonus never paid out."""
+        if ep["lap_ms"] is None or not self.tracker.splits.finish():
+            return False
+        self.tracker.splits.save(self.store.splits)
+        return True
 
     def is_eval_episode(self) -> bool:
         every = self.cfg["train"]["eval_every"]
@@ -461,7 +490,8 @@ class Trainer:
                "reward": round(ep["reward"], 2), "env_steps": self.env_steps_before + self.online.transitions,
                "updates": self.agent.updates, "late_p99_ms": round(ep["late_p99_ms"], 1),
                **{k: round(m.get(k, float("nan")), 4) for k in ("critic_loss", "actor_loss", "alpha", "q", "entropy")},
-               "q_clip_frac": round(m["q_clip_frac"], 4) if "q_clip_frac" in m else None}
+               "q_clip_frac": round(m["q_clip_frac"], 4) if "q_clip_frac" in m else None,
+               **{k: round(ep[k], 1) if ep.get(k) is not None else None for k in ("gas_pct", "brake_pct")}}
         writer.writerow(row)
         f.flush()
         note = ""
@@ -477,6 +507,8 @@ class Trainer:
             note += f"  STALL {ep['stall_s']:.2f}s (race clock ran without a driving step)"
         if self.baseline.from_recent_laps:
             note += f"  baseline {self.baseline.lap_time_s:.2f}s"
+        if ep.get("gas_pct") is not None:
+            note += f"  gas {ep['gas_pct']:.0f}% brake {ep['brake_pct']:.0f}%"
         learning = "warming up" if self.online.transitions < self.warmup else f"{self.agent.updates} updates"
         self.log(f"ep {self.episodes:5d}  {ep['end']:9s}  {ep['race_time_s']:6.2f}s  "
                  f"progress {ep['progress'] * 100:5.1f}%  reward {ep['reward']:7.1f}  {learning}  "
@@ -547,6 +579,7 @@ class Trainer:
                     if ep["deterministic"]:
                         self.record_eval(ep, row)
                     self.add_baseline_lap(ep)
+                    self.record_splits(ep)
                     self.keep_best_lap(ep)
                     self.maybe_adopt_lap(ep)
                     hooks.on_episode(row)

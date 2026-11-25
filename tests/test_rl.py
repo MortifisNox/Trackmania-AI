@@ -54,6 +54,10 @@ def test_state_vector_and_controls():
     assert s[3] == pytest.approx(1.0)                 # forward velocity in the car frame
     assert to_controls((0.5, 1.0, -1.0)) == (0.5, 1.0, 0.0)
     assert np.allclose(from_controls(*to_controls((0.3, -0.2, 0.6))), (0.3, -0.2, 0.6), atol=1e-6)
+    # Digital pedals: gas and brake stay separate, each pressed fully or released.
+    assert to_controls((0.3, 0.05, -0.05), digital_pedals=True) == (0.3, 1.0, 0.0)
+    assert to_controls((-0.4, -0.7, 0.9), digital_pedals=True) == (-0.4, 0.0, 1.0)
+    assert to_controls((0.0, 0.6, 0.6), digital_pedals=True) == (0.0, 1.0, 1.0)
 
 
 @pytest.mark.parametrize("positions", [[0, 10, 20, 30, 20, 10, 0], [0, 1]])

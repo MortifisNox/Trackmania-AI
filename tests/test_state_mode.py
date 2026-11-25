@@ -186,3 +186,24 @@ def test_trainer_with_lidar_senses_the_road_edges(tmp_path):
                                   "train.batch_size=16", "model.hidden_dim=32", *STATE_SETS])
     with pytest.raises(FileNotFoundError, match="lidar"):
         Trainer(no_lidar, game=StateGame(), device=torch.device("cpu"), log=lines.append)
+
+
+def test_finished_laps_set_best_splits_and_the_run_keeps_a_log(tmp_path):
+    from tmai.rl.env import TMEnv
+    from tmai.rl.train import Trainer
+    from tmai.track.splits import SplitTracker
+
+    cfg = state_cfg(tmp_path, warmup_steps=20, updates_per_step=1)
+    make_track(tmp_path, cfg)
+    trainer = Trainer(cfg, game=StateGame(), device=torch.device("cpu"), log=lambda *_: None)
+    env = TMEnv(cfg, trainer.game, trainer.tracker)
+    ep = trainer.run_episode(env)
+    assert ep["end"] == "finished" and ep["gas_pct"] is not None
+    trainer.tracker.splits.current = [700, ep["lap_ms"]]   # StateGame has no checkpoints
+    assert trainer.record_splits(ep)
+    assert SplitTracker.load(trainer.store.splits).best == [700, ep["lap_ms"]]
+    trainer.tracker.splits.current = [800, ep["lap_ms"] + 100]   # slower: kept out
+    assert not trainer.record_splits(ep)
+    assert not trainer.record_splits({**ep, "lap_ms": None})
+    log = (trainer.run_dir / "train.log").read_text()
+    assert "Pedals: digital" in log and "LiDAR: OFF" in log

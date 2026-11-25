@@ -127,7 +127,7 @@ class TMEnv:
     def step(self, action) -> tuple[Obs, float, str | None, StepInfo]:
         """Returns (observation, reward, end reason or None, progress info)."""
         action = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
-        self.game.act(to_controls(action))
+        self.game.act(to_controls(action, self.env_cfg.get("digital_pedals", True)))
         self.lateness.append(self.clock.tick())
         frame, tel = self.game.observe()
         if frame is None:

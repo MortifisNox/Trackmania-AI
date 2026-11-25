@@ -95,9 +95,17 @@ def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, env: dict |
     return np.clip(out, -5.0, 5.0)
 
 
-def to_controls(action) -> tuple[float, float, float]:
-    """Policy output in [-1, 1]^3 -> (steer -1..1, gas 0..1, brake 0..1)."""
+def to_controls(action, digital_pedals: bool = False) -> tuple[float, float, float]:
+    """Policy output in [-1, 1]^3 -> (steer -1..1, gas 0..1, brake 0..1).
+
+    Gas and brake stay two separate outputs either way. With digital_pedals
+    each one is a button: pressed fully when its output is above 0, released
+    otherwise. Trackmania 2020 reads both pedals as on/off and switches at a
+    trigger depth of its own, so a half-pressed trigger left the policy unsure
+    whether the game saw the pedal at all."""
     a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+    if digital_pedals:
+        return float(a[0]), float(a[1] > 0.0), float(a[2] > 0.0)
     return float(a[0]), float((a[1] + 1) / 2), float((a[2] + 1) / 2)
 
 

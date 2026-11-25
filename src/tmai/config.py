@@ -130,6 +130,7 @@ def validate(cfg: dict) -> None:
     _require_number(env, "lookahead_growth", "env.lookahead_growth", lo=1.0, hi=1.5)
     _require_bool(env, "lidar", "env.lidar", default=True)
     _require_bool(env, "launch_hold_gas", "env.launch_hold_gas", default=True)
+    _require_bool(env, "digital_pedals", "env.digital_pedals", default=True)
     _require_bool(gpu, "allow_cpu", "gpu.allow_cpu", default=False)
     _require_number(env, "episode_timeout_s", "env.episode_timeout_s", lo=0.0, lo_open=True)
     _require_number(env, "stuck_timeout_s", "env.stuck_timeout_s", lo=0.0, lo_open=True)
