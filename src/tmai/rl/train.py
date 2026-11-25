@@ -262,7 +262,8 @@ class Trainer:
 
     def pace_reward(self, u0, u1, dt):
         """The pace term of stored transitions, against today's baseline."""
-        return self.cfg["reward"]["pace_per_s"] * self.baseline.pace(u0, u1, dt)
+        rw = self.cfg["reward"]
+        return rw["pace_per_s"] * self.baseline.pace(u0, u1, dt, PaceBaseline.loss_cap(rw))
 
     def sample(self) -> dict:
         demo, demo_n = self.demo, self.demo_n

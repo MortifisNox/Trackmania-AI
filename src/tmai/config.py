@@ -163,6 +163,7 @@ def validate(cfg: dict) -> None:
     _require_int(rw, "pace_baseline_laps", "reward.pace_baseline_laps", lo=0)
     _require_int(rw, "pace_baseline_min_laps", "reward.pace_baseline_min_laps", lo=1)
     _require_number(rw, "pace_baseline_percentile", "reward.pace_baseline_percentile", lo=0.0, hi=100.0, default=25.0)
+    _require_number(rw, "pace_loss_cap", "reward.pace_loss_cap", hi=1.0, default=0.5)
     _require_number(rw, "pb_bonus_per_s", "reward.pb_bonus_per_s", lo=0.0)
     _require_number(rw, "pb_bonus_cap", "reward.pb_bonus_cap", lo=0.0)
     _require_number(rw, "crash_penalty", "reward.crash_penalty", lo=0.0)

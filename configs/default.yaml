@@ -73,6 +73,12 @@ reward:
   pace_baseline_laps: 30
   pace_baseline_min_laps: 5
   pace_baseline_percentile: 25
+  # The pace loss of a step may take at most this share of the step's progress
+  # reward, and nothing when the car did not move forward. Without it a slow car
+  # lost more the further it drove (-1.5 a step at a standstill with pace_per_s
+  # 30), so ending the attempt looked better than driving on. 0.5 keeps every
+  # metre worth at least half its progress reward; faster always pays more.
+  pace_loss_cap: 0.5
   pb_bonus_per_s: 20.0        # at the finish, per second faster than the best lap so far
   pb_bonus_cap: 5.0
   crash_penalty: 1.0

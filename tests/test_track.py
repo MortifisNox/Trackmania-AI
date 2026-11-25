@@ -294,7 +294,7 @@ def test_reference_times_roundtrip_and_pace_reward(tmp_path):
     assert ref.time_at(50.0) == pytest.approx(5.0)
     ref.save(tmp_path / "r.npz")
     assert ReferenceLine.load(tmp_path / "r.npz").time_at(80.0) == pytest.approx(8.0)
-    cfg = load_config(None, ["reward.pace_per_s=10"])
+    cfg = load_config(None, ["reward.pace_per_s=10", "reward.pace_loss_cap=-1"])   # raw pace maths, no cap
     tr = ProgressTracker(ref, cfg)
     tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=0))
     fast = tr.step(tel(pos=(2.0, 0.0, 0.0), race_time_ms=100))    # 20 m/s: 0.1 s gained
@@ -311,7 +311,8 @@ def test_stalls_and_late_starts_cost_the_time_they_lose():
 
     xs = np.linspace(0, 100, 101)
     ref = ReferenceLine.from_positions(np.stack([xs, 0 * xs, 0 * xs], 1), 1.0, xs / 10.0)   # 10 m/s
-    cfg = load_config(None, ["reward.pace_per_s=10", "reward.time_penalty=0.01", "env.step_hz=20"])
+    cfg = load_config(None, ["reward.pace_per_s=10", "reward.time_penalty=0.01", "env.step_hz=20",
+                             "reward.pace_loss_cap=-1"])   # raw pace maths, no cap
     tr = ProgressTracker(ref, cfg)
     tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=0))
     normal = tr.step(tel(pos=(0.5, 0.0, 0.0), race_time_ms=50))        # on the reference pace
@@ -397,3 +398,47 @@ def test_pace_baseline_state_round_trips():
     assert again.lap_count == 3 and again.lap_time_s == pytest.approx(base.lap_time_s)
     again.load_state(None)
     assert again.lap_count == 0 and not again.from_recent_laps
+
+
+def paced_tracker(lap_s=10.0):
+    """A 200 m straight whose reference lap takes lap_s seconds (20 m/s)."""
+    cfg = load_config()
+    xs = np.linspace(0, 200.0, 201)
+    ref = ReferenceLine.from_positions(np.stack([xs, 0 * xs, 0 * xs], 1), 1.0, xs / 200.0 * lap_s)
+    return ProgressTracker(ref, cfg, SplitTracker()), cfg
+
+
+def drive(tr, metres_per_step, steps, dt_ms=50):
+    tr.reset(tel(pos=(0.0, 0.0, 0.0), speed=0.0, race_time_ms=0))
+    total, x, t = 0.0, 0.0, 0
+    for _ in range(steps):
+        x, t = x + metres_per_step, t + dt_ms
+        info = tr.step(tel(pos=(x, 0.0, 0.0), speed=metres_per_step * 20, race_time_ms=t))
+        total += info.reward
+    return total, info
+
+
+def test_driving_further_never_scores_worse_than_standing_still():
+    # Regression: the pace term charged all time lost to the baseline at
+    # pace_per_s, so a slow car lost more the further it drove and standing
+    # still (or ending the attempt) looked better than driving on.
+    tr, cfg = paced_tracker()
+    time_pen = cfg["reward"]["time_penalty"]
+    still, _ = drive(tr, 0.0, 100)
+    assert still == pytest.approx(-100 * time_pen)          # only the time penalty
+    crawl, info = drive(tr, 0.2, 100)                        # 4 m/s, far below the 20 m/s baseline
+    share = cfg["reward"]["pace_loss_cap"]
+    assert info.terms["progress"] + info.terms.get("pace", 0.0) == pytest.approx((1 - share) * info.terms["progress"])
+    assert crawl > still
+    further, _ = drive(tr, 0.2, 400)
+    assert further > crawl                                    # more progress, more reward
+
+
+def test_faster_still_pays_more_and_near_baseline_pace_is_unchanged():
+    tr, cfg = paced_tracker()
+    rewards = [drive(tr, v, 40)[0] for v in (0.2, 0.5, 0.9, 1.0, 1.1)]
+    assert rewards == sorted(rewards)                         # faster is always better
+    # 2% slower than the baseline: the cap does not bind, the full pace loss applies.
+    _, info = drive(tr, 0.98, 10)
+    expected = cfg["reward"]["pace_per_s"] * (0.98 / 20.0 - 0.05)
+    assert info.terms["pace"] == pytest.approx(expected, rel=1e-3)   # float32 telemetry positions

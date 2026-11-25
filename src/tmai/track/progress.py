@@ -120,7 +120,7 @@ class ProgressTracker:
             length = self.ref.length or 1.0
             u0 = self._s / length
             pace_inputs = (u0, s / length if delta else u0, max(dt, 0.0))
-            pace = float(self.baseline.pace(*pace_inputs))
+            pace = float(self.baseline.pace(*pace_inputs, PaceBaseline.loss_cap(self.rw)))
         lap_ms = None
         if tel.finished:
             lap_ms = finish_lap_ms if finish_lap_ms is not None else self._finish_time(

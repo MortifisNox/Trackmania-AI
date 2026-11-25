@@ -879,7 +879,8 @@ def test_pace_rewind_is_zero_and_hitch_loss_is_bounded():
     xs = np.linspace(0, 100, 101)
     line = np.stack([xs, 0 * xs, 0 * xs], 1)
     ref = ReferenceLine.from_positions(line, 1.0, xs / 10.0)   # 10 m/s
-    cfg = load_config(overrides=["reward.pace_per_s=30.0", "reward.time_penalty=0.01", "env.step_hz=20"])
+    cfg = load_config(overrides=["reward.pace_per_s=30.0", "reward.time_penalty=0.01", "env.step_hz=20",
+                                    "reward.pace_loss_cap=-1"])   # raw pace bounds, no cap
     tr = ProgressTracker(ref, cfg)
 
     # (a) Race-clock rewind (dt < 0) gives 0 pace (must NOT pay +3).

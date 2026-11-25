@@ -104,15 +104,34 @@ class PaceBaseline:
         else:
             self._curve = (self._grid, None)
 
-    def pace(self, u0, u1, dt):
+    def pace(self, u0, u1, dt, loss_s_per_m=None):
         """Seconds gained on the baseline going from lap fraction u0 to u1 in dt
         seconds (arrays or scalars). Non-positive dt (countdown or clock rewind)
         gives 0; per-step pace is bounded to [-MAX_PACE_LOSS_S, MAX_PACE_GAIN_S]
-        so single-step hitches stay within the critic's Q support."""
+        so single-step hitches stay within the critic's Q support.
+
+        With `loss_s_per_m`, a step loses at most that many seconds per metre it
+        moved forward, and nothing when it did not move forward. Callers pass
+        reward.pace_loss_cap * progress_per_m / pace_per_s, so the pace loss takes
+        at most that share of the same step's progress reward: driving on always
+        beats standing still or ending the attempt, and faster always pays more."""
         dt_arr = np.asarray(dt, dtype=np.float64)
         grid, times = self._curve
         if times is None:
             return np.zeros_like(dt_arr)
         base_dt = np.interp(u1, grid, times) - np.interp(u0, grid, times)
         clipped = np.clip(base_dt - dt_arr, -MAX_PACE_LOSS_S, MAX_PACE_GAIN_S)
+        if loss_s_per_m is not None:
+            forward_m = np.maximum((np.asarray(u1, dtype=np.float64) - np.asarray(u0, dtype=np.float64))
+                                   * self.ref.length, 0.0)
+            clipped = np.maximum(clipped, -loss_s_per_m * forward_m)
         return np.where(dt_arr > 0.0, clipped, 0.0)
+
+    @staticmethod
+    def loss_cap(reward_cfg: dict):
+        """Seconds of pace loss allowed per metre of progress (see pace), or None
+        for the old unbounded behaviour (reward.pace_loss_cap < 0)."""
+        pace, share = reward_cfg.get("pace_per_s", 0.0), reward_cfg.get("pace_loss_cap", 0.5)
+        if not pace or share < 0:
+            return None
+        return share * reward_cfg["progress_per_m"] / pace
