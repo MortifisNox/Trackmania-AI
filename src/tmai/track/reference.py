@@ -63,24 +63,28 @@ class ReferenceLine:
             times = data["times"] if "times" in data.files else None
             return cls(data["points"], float(data["spacing"]), times)
 
-    def project(self, pos, hint: int | None = None, window: int = 80) -> tuple[int, float, float]:
+    def project(self, pos, hint: int | None = None, window: int = 80, *,
+                start_only: bool = False) -> tuple[int, float, float]:
         """(segment index, distance along the line in m, distance from the line in m).
 
-        Searches a window around `hint` (the previous index) so a track that
-        crosses over itself does not snap to the wrong part; falls back to a
-        full search when the car is far from the windowed match (respawn)."""
+        Searches locally around `hint` to stay on the same branch at crossings.
+        At the start, only the opening section is eligible."""
         p = np.asarray(pos, dtype=np.float64)
         n = len(self.points) - 1
-        if hint is None:
+        if start_only:
+            hi = int(np.searchsorted(self.s, min(self.length * 0.1, 50.0)))
+            lo, hi = 0, max(1, hi)
+        elif hint is None:
             lo, hi = 0, n
         else:
             lo, hi = max(0, hint - window // 4), min(n, hint + window)
-        idx, s, dist = self._project_range(p, lo, hi)
-        if hint is not None and dist > 15.0:
-            full = self._project_range(p, 0, n)
-            if full[2] < dist:
-                idx, s, dist = full
-        return idx, s, dist
+        return self._project_range(p, lo, hi)
+
+    def finish_overshoot(self, pos) -> float:
+        """Distance past the endpoint along the direction of the last segment."""
+        end = self.points[-1]
+        tangent = end - self.points[-2]
+        return max(0.0, float((pos - end) @ tangent) / max(self.s[-1] - self.s[-2], 1e-12))
 
     def _project_range(self, p: np.ndarray, lo: int, hi: int) -> tuple[int, float, float]:
         a = self.points[lo:hi]

@@ -54,6 +54,60 @@ def test_state_vector_and_controls():
     assert s[3] == pytest.approx(1.0)                 # forward velocity in the car frame
     assert to_controls((0.5, 1.0, -1.0)) == (0.5, 1.0, 0.0)
     assert np.allclose(from_controls(*to_controls((0.3, -0.2, 0.6))), (0.3, -0.2, 0.6), atol=1e-6)
+    # Digital pedals: gas and brake stay separate, each pressed fully or released.
+    assert to_controls((0.3, 0.05, -0.05), digital_pedals=True) == (0.3, 1.0, 0.0)
+    assert to_controls((-0.4, -0.7, 0.9), digital_pedals=True) == (-0.4, 0.0, 1.0)
+    assert to_controls((0.0, 0.6, 0.6), digital_pedals=True) == (0.0, 1.0, 1.0)
+
+
+@pytest.mark.parametrize("positions", [[0, 10, 20, 30, 20, 10, 0], [0, 1]])
+def test_guide_replay_uses_live_terminal_reasons(positions):
+    from tmai.rl.demos import add_lap
+
+    cfg = load_config(overrides=["track.off_track_m=1"])
+    ref = ReferenceLine.from_positions([(0, 0, 0), (60, 0, 0)])
+    tracker = ProgressTracker(ref, cfg)
+    buffer = ReplayBuffer(20, 0, 4)
+    off_track_y = 2 if len(positions) == 2 else 0
+    tels = [tel(pos=(x, off_track_y if i else 0, 0), race_time_ms=50 * i) for i, x in enumerate(positions)]
+    actions = np.zeros((len(tels) - 1, 3), np.float32)
+    size, _ = add_lap(buffer, tracker, None, tels, actions, actions[0])
+    assert tracker.ended == ("off_track" if off_track_y else "wrong_way")
+    assert buffer.terminal[size - 1] == 1 and not buffer.has_next[size]
+
+
+def test_add_lap_resets_lidar_before_each_demo_scan(monkeypatch):
+    from tmai.rl.demos import add_lap
+
+    ref = ReferenceLine.from_positions([(0, 0, 0), (60, 0, 0)])
+    tracker = ProgressTracker(ref, load_config())
+    buffer = ReplayBuffer(20, 0, 4)
+    calls = []
+    tracker_reset = tracker.reset
+
+    def reset_tracker(t):
+        tracker_reset(t)
+        calls.append(("tracker reset", t.seq))
+
+    class Lidar:
+        def reset(self):
+            calls.append("lidar reset")
+
+        def features(self, t):
+            calls.append(("scan", t.seq))
+            return None
+
+    monkeypatch.setattr(tracker, "reset", reset_tracker)
+    lidar = Lidar()
+    action = np.zeros(3, np.float32)
+    for seq in (1, 3):
+        tels = [tel(seq=seq), tel(seq=seq + 1, pos=(1, 0, 0), race_time_ms=50)]
+        assert add_lap(buffer, tracker, None, tels, [action], action, lidar)[0] == 1
+
+    assert calls == [
+        ("tracker reset", 1), "lidar reset", ("scan", 1), ("scan", 2),
+        ("tracker reset", 3), "lidar reset", ("scan", 3), ("scan", 4),
+    ]
 
 
 def test_replay_stacks_within_episode():

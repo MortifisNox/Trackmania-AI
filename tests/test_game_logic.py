@@ -22,13 +22,17 @@ class FakeTime:
 def test_clock_paces_and_reanchors_after_overrun():
     ft = FakeTime()
     clock = RealtimeClock(20, now=ft.now, sleep=ft.sleep)
-    clock.tick()
     assert clock.tick() == 0.0 and ft.t == pytest.approx(0.05)
+    assert clock.tick() == 0.0 and ft.t == pytest.approx(0.10)
     ft.t += 0.2  # a step took far too long
     late = clock.tick()
     assert late == pytest.approx(0.15) and clock.overruns == 1
+    assert ft.t == pytest.approx(0.35)
     clock.tick()
-    assert ft.t == pytest.approx(0.30)  # next slot is one period after the overrun, no burst
+    assert ft.t == pytest.approx(0.40)
+    clock.reset()
+    clock.tick()
+    assert ft.t == pytest.approx(0.45)
 
 
 def tel(**kw):
@@ -104,18 +108,16 @@ def test_restart_detection():
 
     before = tel(race_time_ms=8000, pos=(100.0, 10.0, 50.0), speed=20.0)
     clock_reset = tel(race_time_ms=-1500, pos=(100.0, 10.0, 50.0), speed=20.0)
-    assert restart_detected(before, before, clock_reset, 0.1)
-    # race clock stuck at 0 (editor test drive): detect the teleport instead
+    assert restart_detected(before, clock_reset)
+    # A teleport or a stationary packet at zero is ambiguous without a new start clock.
     b0 = tel(race_time_ms=0, pos=(100.0, 10.0, 50.0), speed=20.0)
     spawn = tel(race_time_ms=0, pos=(10.0, 10.0, 5.0), speed=0.0)
-    assert restart_detected(b0, b0, spawn, 0.1)
-    # still driving, nothing happened yet
-    moving = tel(race_time_ms=0, pos=(101.0, 10.0, 50.0), speed=20.0)
-    assert not restart_detected(b0, b0, moving, 0.5)
-    # parked at the start already: accept after a short wait
-    parked = tel(race_time_ms=0, pos=(10.0, 10.0, 5.0), speed=0.0)
-    assert not restart_detected(parked, parked, parked, 1.0)
-    assert restart_detected(parked, parked, parked, 2.5)
+    assert not restart_detected(b0, spawn) and not restart_detected(spawn, spawn)
+    assert restart_detected(b0, tel(start_time_ms=100))
+    assert not restart_detected(before, tel(cp_count=1, race_time_ms=300))
+    assert not restart_detected(before, tel(flags=protocol.FLAG_PLAYER, race_time_ms=0))
+    unspawned = tel(start_time_ms=protocol.INT32_MAX, race_time_ms=-(1 << 31), net_now_ms=10_000)
+    assert not restart_detected(before, unspawned)
 
 
 def test_crop_to_client_removes_title_bar_and_borders():
@@ -154,7 +156,7 @@ def test_restart_that_respawns_at_a_checkpoint_is_refused():
     ])
 
     class Tel:
-        def wait(self, timeout, after_seq=None):
+        def wait(self, timeout, after_seq=None, max_age=None):
             return next(frames)
 
     class Pad:
@@ -163,6 +165,7 @@ def test_restart_that_respawns_at_a_checkpoint_is_refused():
 
     game = GameInterface.__new__(GameInterface)
     game.telemetry, game.pad, game.restart_button = Tel(), Pad(), "B"
+    game.max_age = 0.1
     with pytest.raises(CheckpointRespawn):
         game.restart(settle_s=0.0)
     assert interface.CheckpointRespawn is CheckpointRespawn
@@ -180,12 +183,15 @@ def test_restart_waits_for_a_late_clock_reset():
         protocol.decode(protocol.encode(seq=2, flags=playing, race_time_ms=107050, pos=(0.0, 0.0, 0.0))),
         protocol.decode(protocol.encode(seq=3, flags=playing, race_time_ms=107100, pos=(0.0, 0.0, 0.0))),
         protocol.decode(protocol.encode(seq=4, flags=playing, race_time_ms=-1500, pos=(0.0, 0.0, 0.0))),
-        protocol.decode(protocol.encode(seq=5, flags=playing, race_time_ms=0, pos=(0.0, 0.0, 0.0))),
+        protocol.decode(protocol.encode(seq=5, flags=protocol.FLAG_PLAYER, race_time_ms=0, pos=(0.0, 0.0, 0.0))),
+        protocol.decode(protocol.encode(seq=6, flags=playing, race_time_ms=25, pos=(0.0, 0.0, 0.0))),
     ])
 
     class Tel:
-        def wait(self, timeout, after_seq=None):
-            return next(frames)
+        def wait(self, timeout, after_seq=None, max_age=None):
+            t = next(frames)
+            assert max_age == 0.1 and (after_seq is None or t.seq == after_seq + 1)
+            return t
 
     class Pad:
         def press_restart(self):
@@ -193,26 +199,39 @@ def test_restart_waits_for_a_late_clock_reset():
 
     game = GameInterface.__new__(GameInterface)
     game.telemetry, game.pad, game.restart_button = Tel(), Pad(), "BACK"
-    assert game.restart().seq == 5
+    game.max_age = 0.1
+    assert game.restart().seq == 6
 
 
-def test_restart_gets_past_the_end_of_race_menu():
+@pytest.mark.parametrize("menu_pauses_packets", [False, True])
+def test_restart_gets_past_the_end_of_race_menu(monkeypatch, menu_pauses_packets):
     """After a personal best the game's end-of-race menu ignores the restart
     button; restart() taps the menu button (A, Improve) to start the run again."""
-    from tmai.game import protocol
+    from tmai.game import interface, protocol
     from tmai.game.interface import GameInterface
 
     playing = protocol.FLAG_PLAYER | protocol.FLAG_PLAYING
     menu = protocol.FLAG_PLAYER | protocol.FLAG_FINISHED
     pressed = []
+    now = 0.0
+    expected_presses = ["BACK", "A", "BACK", "A"]
+    monkeypatch.setattr(interface.time, "monotonic", lambda: now)
 
     class Tel:
         seq = 0
 
-        def wait(self, timeout, after_seq=None):
+        def wait(self, timeout, after_seq=None, max_age=None):
+            nonlocal now
             self.seq += 1
-            if "A" not in pressed:   # the menu stays up until A is pressed
-                return protocol.decode(protocol.encode(seq=self.seq, flags=menu, race_time_ms=20550, pos=(1645.0, 0.0, 0.0)))
+            if pressed != expected_presses:
+                if after_seq is not None and menu_pauses_packets:
+                    now += timeout
+                    raise TimeoutError
+                now += 0.1
+                # The last telemetry before the menu stopped sending can still say Playing.
+                flags = playing if menu_pauses_packets else menu
+                return protocol.decode(protocol.encode(seq=self.seq, flags=flags, race_time_ms=20550,
+                                                       pos=(1645.0, 0.0, 0.0)))
             self.clock = getattr(self, "clock", -1600) + 100   # countdown, then the run
             return protocol.decode(protocol.encode(seq=self.seq, flags=playing, race_time_ms=self.clock, pos=(0.0, 0.0, 0.0)))
 
@@ -225,8 +244,9 @@ def test_restart_gets_past_the_end_of_race_menu():
 
     game = GameInterface.__new__(GameInterface)
     game.telemetry, game.pad, game.restart_button, game.menu_button = Tel(), Pad(), "BACK", "A"
-    tel = game.restart(timeout=5.0, menu_after_s=0.0)
-    assert pressed == ["BACK", "A"] and tel.race_time_ms == 0
+    game.max_age = 0.1
+    tel = game.restart(timeout=10.0, menu_after_s=0.0)
+    assert pressed == expected_presses and tel.race_time_ms == 0
 
 
 def test_press_button_taps_one_button():

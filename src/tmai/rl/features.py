@@ -16,6 +16,7 @@ from tmai.game.protocol import Telemetry
 LOOKAHEAD_SCALE = 50.0   # metres; lookahead points are divided by this (or their distance, if further)
 HEAD_DIM = 18            # telemetry and previous action, before the lookahead points
 ATTITUDE_DIM = 3         # world up in the car's frame (pitch and roll), state mode only
+LIDAR_DIM = 75           # virtual lidar: 15 directions x (distance, is-wall, road height at 9/20/38 m); see tmai.track.lidar
 WORLD_UP = (0.0, 1.0, 0.0)   # Trackmania's world is Y-up
 
 
@@ -28,8 +29,13 @@ def frame_size(env: dict) -> int:
     return env["frame_size"] if uses_camera(env) else 0
 
 
+def uses_lidar(env: dict) -> bool:
+    return bool(env.get("lidar", False)) and not uses_camera(env)
+
+
 def state_dim(env: dict) -> int:
-    return HEAD_DIM + 3 * env["lookahead_points"] + (0 if uses_camera(env) else ATTITUDE_DIM)
+    extra = 0 if uses_camera(env) else ATTITUDE_DIM + (LIDAR_DIM if uses_lidar(env) else 0)
+    return HEAD_DIM + 3 * env["lookahead_points"] + extra
 
 
 def lookahead_distances(env: dict) -> np.ndarray:
@@ -51,12 +57,14 @@ def car_frame(vec, forward, up) -> np.ndarray:
     return np.array([v @ f, v @ left, v @ u])
 
 
-def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, env: dict | None = None) -> np.ndarray:
+def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, env: dict | None = None,
+                 lidar: np.ndarray | None = None) -> np.ndarray:
     """All values roughly in -1..1:
     speed, gear, rpm, velocity in the car frame (3), on ground, wheel surface
     materials (4), wheel slip (4), previous action (3), lookahead points
     (3 per point; 10 points = 48 floats in all). State mode adds world up in
-    the car's frame (3), which says how the car is pitched and rolled."""
+    the car's frame (3), which says how the car is pitched and rolled. With
+    env.lidar it adds the lidar features last (LIDAR_DIM floats, `lidar`)."""
     env = env or {"observation": "image", "lookahead_points": 10, "lookahead_spacing_m": 10.0}
     vel = car_frame(tel.vel, tel.dir, tel.up) / 50.0
     head = [
@@ -76,6 +84,10 @@ def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, env: dict |
     parts = [np.asarray(head, dtype=np.float32), points.reshape(-1).astype(np.float32)]
     if not uses_camera(env):
         parts.append(car_frame(WORLD_UP, tel.dir, tel.up).astype(np.float32))
+    if uses_lidar(env):
+        if lidar is None or len(lidar) != LIDAR_DIM:
+            raise ValueError(f"env.lidar is on but the observation got no {LIDAR_DIM} lidar values")
+        parts.append(np.asarray(lidar, dtype=np.float32))
     out = np.concatenate(parts)
     want = state_dim(env)
     if out.shape[0] != want:
@@ -83,9 +95,17 @@ def state_vector(tel: Telemetry, lookahead: np.ndarray, prev_action, env: dict |
     return np.clip(out, -5.0, 5.0)
 
 
-def to_controls(action) -> tuple[float, float, float]:
-    """Policy output in [-1, 1]^3 -> (steer -1..1, gas 0..1, brake 0..1)."""
+def to_controls(action, digital_pedals: bool = False) -> tuple[float, float, float]:
+    """Policy output in [-1, 1]^3 -> (steer -1..1, gas 0..1, brake 0..1).
+
+    Gas and brake stay two separate outputs either way. With digital_pedals
+    each one is a button: pressed fully when its output is above 0, released
+    otherwise. Trackmania 2020 reads both pedals as on/off and switches at a
+    trigger depth of its own, so a half-pressed trigger left the policy unsure
+    whether the game saw the pedal at all."""
     a = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
+    if digital_pedals:
+        return float(a[0]), float(a[1] > 0.0), float(a[2] > 0.0)
     return float(a[0]), float((a[1] + 1) / 2), float((a[2] + 1) / 2)
 
 

@@ -1,5 +1,12 @@
 # Growing the game state: what to add to the plugin
 
+## Virtual lidar
+
+The plugin cannot cast rays inside the game, but it can read the map's
+collision mesh by name. The TMAI Map Geometry plugin exports that mesh once
+per map, and Python casts the lidar rays against it. Design, status and next
+steps: [LIDAR_PLAN.md](LIDAR_PLAN.md).
+
 In `state` mode the AI drives only from what the TMAI Telemetry plugin sends,
 so every useful field the plugin adds is something new the AI can see. This
 page lists candidates, cheapest first, and the rules for finding new ones with

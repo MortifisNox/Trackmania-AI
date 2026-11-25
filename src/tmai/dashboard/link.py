@@ -317,6 +317,9 @@ class DashboardHook(TrainerHooks):
             v = getattr(info, k, None)
             if v is not None:
                 msg[k] = v
+        lap_ms = getattr(info, "lap_ms", None)
+        if lap_ms is not None:
+            msg["race_time_ms"] = lap_ms
         splits = self._splits()
         if splits is not None:
             msg["splits_ms"] = list(splits.current)

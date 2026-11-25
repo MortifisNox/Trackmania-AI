@@ -38,11 +38,13 @@ def test_auto_restart_button_follows_checkpoints(tmp_path):
 
 def test_names_with_spaces_and_extra_settings(tmp_path):
     settings = launch.load_settings(_write(tmp_path, map_name="My Map", run_name="map two",
-                                           extra_settings={"train.batch_size": 128}, _note="ignored"))
+                                           extra_settings={"train.batch_size": 128,
+                                                           "train.learning_rate": 0.00001}, _note="ignored"))
     cfg = load_config(overrides=launch.to_overrides(settings))
     assert cfg["run"]["track"] == "My Map"
     assert cfg["run"]["name"] == "map two"
     assert cfg["train"]["batch_size"] == 128
+    assert cfg["train"]["learning_rate"] == 0.00001
 
 
 def test_bad_settings_are_explained(tmp_path):
@@ -84,10 +86,30 @@ def test_start_runs_demo_dashboard_and_training_in_order(tmp_path, monkeypatch):
     cfg = load_config(overrides=launch.to_overrides(settings))
     calls = []
     monkeypatch.setattr("tmai.track.commands.record_demo", lambda c, laps: calls.append(("demo", laps)) or 0)
-    monkeypatch.setattr(launch, "start_dashboard", lambda p, c: calls.append(("dashboard", p)))
+    monkeypatch.setattr(launch, "start_dashboard", lambda p, c, **kw: calls.append(("dashboard", p)))
     result = launch.start(cfg, settings, path, lambda c, minutes, fresh: calls.append(("train", minutes, fresh)) or 0)
     assert result == 0
     assert calls == [("demo", 3), ("dashboard", path), ("train", 5, False)]
+
+
+def test_dashboard_child_receives_config_and_overrides(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    path = _write(tmp_path, map_name="A", reinstall_plugin=False, wait_for_game=False, open_browser=False)
+    (tmp_path / "config.yaml").write_text(f"run:\n  output_dir: {tmp_path}\ndashboard:\n  link_port: 8181\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("tmai.track.commands.record_demo", lambda *a: 0)
+    monkeypatch.setattr(cli, "train", lambda *a: 0)
+    monkeypatch.setattr(launch, "_port_open", lambda *a: False)
+    commands = []
+    monkeypatch.setattr(launch.subprocess, "Popen", lambda cmd, **kw:
+                        commands.append(cmd) or SimpleNamespace(poll=lambda: 0))
+    assert cli.main(["--settings", str(path), "--config", "config.yaml", "--set",
+                     "dashboard.port=8180", "--set", 'run.name="other run"', "start"]) == 0
+    args = cli.build_parser().parse_args(commands[0][3:])
+    cfg = load_config(args.config, launch.to_overrides(launch.load_settings(args.settings)) + args.set)
+    assert cfg["dashboard"]["port"] == 8180 and cfg["dashboard"]["link_port"] == 8181
+    assert cfg["run"]["name"] == "other run"
 
 
 def test_start_stops_without_demo_when_recording_is_off(tmp_path):
@@ -110,7 +132,11 @@ def test_observation_auto_follows_the_os(tmp_path):
     lin = load_config(overrides=launch.to_overrides(settings, system="Linux"))
     assert win["env"]["observation"] == "image" and win["env"]["lookahead_points"] == 10
     assert lin["env"]["observation"] == "state" and lin["env"]["lookahead_points"] == 20
-    assert win["run"]["name"] == "A" and lin["run"]["name"] == "A-state"   # a camera run cannot resume in state mode
+    assert lin["env"]["lidar"] is True and lin["replay"]["capacity"] == 350_000
+    assert win["run"]["name"] == "A" and lin["run"]["name"] == "A-state-lidar"   # distinct from camera and no-lidar runs
+    no_lidar = launch.load_settings(_write(tmp_path, map_name="A", lidar=False))
+    lin_no_lidar = load_config(overrides=launch.to_overrides(no_lidar, system="Linux"))
+    assert lin_no_lidar["env"]["lidar"] is False and lin_no_lidar["run"]["name"] == "A-state"
     named = launch.load_settings(_write(tmp_path, map_name="A", run_name="mine"))
     assert load_config(overrides=launch.to_overrides(named, system="Linux"))["run"]["name"] == "mine"
     forced = launch.load_settings(_write(tmp_path, map_name="A", observation="state",

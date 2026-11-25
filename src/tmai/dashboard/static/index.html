@@ -219,10 +219,10 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 
 // ---------- charts ----------
 const charts = new Map();
-const CHART_ORDER = ["reward", "lap", "progress", "critic_loss", "actor_loss", "q", "alpha", "entropy"];
+const CHART_ORDER = ["reward", "lap", "progress", "critic_loss", "actor_loss", "q", "q_clip_frac", "alpha", "entropy"];
 const NICE = { reward: "Episode reward", lap: "Lap time (s)", progress: "Track progress per episode (%)",
-  critic_loss: "Critic loss", actor_loss: "Actor loss", q: "Q value", alpha: "Temperature (alpha)",
-  entropy: "Policy entropy", gpu_temp_c: "GPU temperature (°C)", vram_mb: "VRAM used (MB)" };
+  critic_loss: "Critic loss", actor_loss: "Actor loss", q: "Q value", q_clip_frac: "Q-target clipping fraction",
+  alpha: "Temperature (alpha)", entropy: "Policy entropy", gpu_temp_c: "GPU temperature (°C)", vram_mb: "VRAM used (MB)" };
 
 function chart(key) {
   if (charts.has(key)) return charts.get(key);
@@ -428,9 +428,9 @@ function renderSplits() {
   if (!n) { body.innerHTML = `<tr><td colspan="4" class="empty">waiting for the first checkpoint</td></tr>`; return; }
   for (let i = 0; i < n; i++) {
     const tr = document.createElement("tr");
-    const d = cur[i] != null && best[i] != null ? cur[i] - best[i] : null;
+    const d = cur[i] && best[i] ? cur[i] - best[i] : null;
     const label = i === n - 1 && best.length === n ? "Finish" : `CP ${i + 1}`;
-    const cells = [label, fmtTime(cur[i]), fmtTime(best[i]), d == null ? "–" : (d > 0 ? "+" : d < 0 ? "−" : "±") + fmtTime(Math.abs(d))];
+    const cells = [label, fmtTime(cur[i] || null), fmtTime(best[i] || null), d == null ? "–" : (d > 0 ? "+" : d < 0 ? "−" : "±") + fmtTime(Math.abs(d))];
     cells.forEach((v, j) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
       if (j === 3 && d) td.className = d < 0 ? "faster" : "slower"; });
     body.appendChild(tr);

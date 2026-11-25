@@ -2,7 +2,7 @@
 name = "TMAI Telemetry"
 author = "Trackmania-AI"
 category = "Developer"
-version = "0.1.0"
+version = "0.1.4"
 
 [script]
 dependencies = [ "VehicleState" ]

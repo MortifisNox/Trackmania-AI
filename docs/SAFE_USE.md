@@ -61,10 +61,11 @@ memory or speed.
    ([Openplanet plugin terms](https://openplanet.dev/docs/plugin-tos)).
    *(Sourced.)*
 
-7. **Keep our plugins private** (TMAI Telemetry and TMAI Ghost). Openplanet's plugin terms do not
-   allow mostly AI-generated plugins on openplanet.dev
-   ([plugin terms](https://openplanet.dev/docs/plugin-tos)), and the plugin is
-   written with AI help. It runs locally in Developer mode and never gets
+7. **Keep our plugins private** (TMAI Telemetry, TMAI Ghost and TMAI Map
+   Geometry). Openplanet's plugin terms do not allow mostly AI-generated
+   plugins on openplanet.dev
+   ([plugin terms](https://openplanet.dev/docs/plugin-tos)), and the plugins
+   are written with AI help. It runs locally in Developer mode and never gets
    uploaded there. *(Sourced.)*
 
 8. **Leave School/Developer mode before playing normally.** Switch the

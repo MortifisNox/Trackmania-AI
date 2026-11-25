@@ -135,7 +135,8 @@ class ShutdownHook(TrainerHooks):
         if self.controller is not None:
             self.controller.poll()
         if info is not None and info.done == "finished" and tel is not None:
-            self.agent_laps.add(tel.last_cp_time_ms or tel.race_time_ms)
+            lap_ms = getattr(info, "lap_ms", None)
+            self.agent_laps.add(lap_ms if lap_ms is not None else (tel.last_cp_time_ms or tel.race_time_ms))
 
     def should_pause(self) -> bool:
         # on_step does not run while paused or waiting for the game, so check

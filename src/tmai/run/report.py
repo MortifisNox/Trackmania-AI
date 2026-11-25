@@ -26,6 +26,7 @@ CURVES = (  # (episodes.csv column, title, what it tells you)
     ("critic_loss", "Critic loss", "Q-network error; spikes that keep growing mean instability."),
     ("actor_loss", "Actor loss", "Policy objective; drifts as Q-values change, should not explode."),
     ("q", "Mean Q-value", "Predicted return; steady growth is normal, runaway growth is divergence."),
+    ("q_clip_frac", "Q-target clipping fraction", "Share of TD targets at or beyond the HL-Gauss support bounds."),
     ("alpha", "Entropy temperature", "SAC's exploration weight; usually falls then settles."),
     ("entropy", "Policy entropy", "How random the actions are; falls as the policy commits."),
 )
@@ -101,7 +102,8 @@ def stability(values: np.ndarray, window: int = WINDOW) -> dict:
     finite = values[np.isfinite(values)]
     out = {"n": int(len(values)), "nan": int(len(values) - len(finite))}
     if len(finite) < 2:
-        return {**out, "verdict": "not enough data"}
+        verdict = "NaN values: learning broke at some point" if out["nan"] else "not enough data"
+        return {**out, "verdict": verdict}
     last = finite[-window:]
     std = float(last.std())
     if std < 1e-9 * max(1.0, abs(float(last.mean()))):
@@ -137,12 +139,17 @@ def split_table(ai: list[int], demo: list[int] | None) -> list[dict]:
     rows = []
     demo = demo or []
     for i, t in enumerate(ai):
-        row = {"cp": i + 1, "ai_ms": t, "ai_sector_ms": t - (ai[i - 1] if i else 0)}
-        if i < len(demo):
+        row = {"cp": i + 1, "ai_ms": t or None}
+        if t and (not i or ai[i - 1]):
+            row["ai_sector_ms"] = t - (ai[i - 1] if i else 0)
+        if i < len(demo) and demo[i]:
             row["demo_ms"] = demo[i]
-            row["demo_sector_ms"] = demo[i] - (demo[i - 1] if i else 0)
-            row["delta_ms"] = t - demo[i]
-            row["sector_delta_ms"] = row["ai_sector_ms"] - row["demo_sector_ms"]
+            if t:
+                row["delta_ms"] = t - demo[i]
+            if not i or demo[i - 1]:
+                row["demo_sector_ms"] = demo[i] - (demo[i - 1] if i else 0)
+                if "ai_sector_ms" in row:
+                    row["sector_delta_ms"] = row["ai_sector_ms"] - row["demo_sector_ms"]
         rows.append(row)
     return rows
 
@@ -154,13 +161,19 @@ def summarize(run_dir: Path, track_dir: Path | None = None, extra: dict | None =
     col = {k: np.array([r.get(k, math.nan) for r in episodes], dtype=float)
            for k in ("episode", "wall_time", "env_steps", "updates", "race_time_s",
                      *(c for c, _, _ in CURVES))}
+    updates = col["updates"]
+    learned = np.diff(updates, prepend=0) > 0
+    learner_curves = [c for c, _, _ in CURVES if c not in ("reward", "progress")]
+    if episodes and not any(not np.isnan(col[c][0]) for c in learner_curves):
+        # A resumed log can begin with a saved update count and no learner metrics yet.
+        learned[0] = False
     finished = [r for r in episodes if r.get("end") == "finished"]
     ends: dict[str, int] = {}
     for r in episodes:
         ends[r.get("end", "?")] = ends.get(r.get("end", "?"), 0) + 1
 
     best = bests[-1] if bests else None
-    if best is None and finished:   # no best_laps.jsonl: fall back to episodes.csv (0.01 s resolution)
+    if best is None and finished:   # no best_laps.jsonl: fall back to episodes.csv
         r = min(finished, key=lambda r: r["race_time_s"])
         best = {"lap_ms": int(round(r["race_time_s"] * 1000)), "episode": int(r["episode"]), "splits": []}
     s = {
@@ -174,8 +187,12 @@ def summarize(run_dir: Path, track_dir: Path | None = None, extra: dict | None =
         "first_finish": ({"episode": int(finished[0]["episode"]),
                           "lap_ms": int(round(finished[0]["race_time_s"] * 1000))} if finished else None),
         "splits": split_table(best["splits"], demo["splits"] if demo else None) if best and best.get("splits") else [],
-        "stability": {c: stability(col[c]) for c, _, _ in CURVES},
+        "stability": {c: stability(col[c][learned] if c in learner_curves else col[c])
+                      for c, _, _ in CURVES if c != "q_clip_frac"},
     }
+    clip = col["q_clip_frac"]
+    if np.isfinite(clip).any():
+        s["stability"]["q_clip_frac"] = stability(clip[learned & np.isfinite(clip)])
     if best and demo:
         s["vs_demo_ms"] = best["lap_ms"] - demo["lap_ms"]
     s.update(extra or {})
@@ -380,7 +397,7 @@ def render_html(s: dict) -> str:
             d, sd = r.get("delta_ms"), r.get("sector_delta_ms")
             rows += (f'<tr><td>{"Finish" if r is s["splits"][-1] else "CP " + str(r["cp"])}</td>'
                      f'<td>{_fmt_ms(r["ai_ms"])}</td><td>{_fmt_ms(r.get("demo_ms"))}</td>'
-                     f'<td class="{cls(d)}">{_fmt_delta(d)}</td><td>{_fmt_ms(r["ai_sector_ms"])}</td>'
+                     f'<td class="{cls(d)}">{_fmt_delta(d)}</td><td>{_fmt_ms(r.get("ai_sector_ms"))}</td>'
                      f'<td>{_fmt_ms(r.get("demo_sector_ms"))}</td><td class="{cls(sd)}">{_fmt_delta(sd)}</td></tr>')
         parts.append('<p class="muted">The agent\'s best lap against your fastest demo lap'
                      f'{" (" + e(demo["file"]) + ")" if demo else ""}. Negative = the agent is faster.</p>'
@@ -394,14 +411,15 @@ def render_html(s: dict) -> str:
                  f'<p class="muted">Rolling mean and ±1 standard deviation over {WINDOW} attempts. '
                  'The verdict compares the latest window with the rest of the run.</p>')
     rows = ""
-    for c, title, _ in CURVES:
+    curves = [(c, title, what) for c, title, what in CURVES if c in s["stability"]]
+    for c, title, _ in curves:
         st = s["stability"][c]
         rows += (f'<tr><td>{e(title)}</td><td>{st.get("last_mean", math.nan):.4g}</td>'
                  f'<td>{st.get("last_std", math.nan):.3g}</td><td>{st.get("slope_per_100", math.nan):+.3g}</td>'
                  f'<td>{e(st["verdict"])}</td></tr>')
     parts.append('<div class="scroll"><table><tr><th>Curve</th><th>Latest mean</th><th>Latest std</th>'
                  f'<th>Trend / 100 attempts</th><th>Verdict</th></tr>{rows}</table></div>')
-    for c, title, what in CURVES:
+    for c, title, what in curves:
         y = col[c]
         mean, std = rolling(y, WINDOW)
         parts.append(f"<h3>{e(title)}</h3><p class=\"muted\">{e(what)}</p>")

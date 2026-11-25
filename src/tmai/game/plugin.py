@@ -1,4 +1,4 @@
-"""Installs the TMAI Telemetry plugin into Openplanet's plugin folder."""
+"""Installs the TMAI plugins (Telemetry, Ghost, Map Geometry) into Openplanet's plugin folder."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from pathlib import Path
 PLUGIN_NAME = "TMAI_Telemetry"
 PLUGIN_SRC = Path(__file__).resolve().parents[3] / "openplanet" / PLUGIN_NAME
 GHOST_PLUGIN_SRC = PLUGIN_SRC.parent / "TMAI_Ghost"   # saves the agent's best lap as a replay
+GEOMETRY_PLUGIN_SRC = PLUGIN_SRC.parent / "TMAI_MapGeometry"   # exports map collision geometry for the lidar
+GEOMETRY_STORAGE = "TMAI_MapGeometry"
 
 
 def install_plugin(openplanet_dir: Path, src: Path = PLUGIN_SRC) -> Path:

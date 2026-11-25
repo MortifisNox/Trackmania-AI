@@ -9,6 +9,7 @@ import numpy as np
 
 from tmai.game import protocol
 from tmai.game.protocol import Telemetry
+from tmai.rl.env import TERMINAL
 from tmai.rl.features import from_controls, state_vector
 from tmai.rl.replay import ReplayBuffer
 from tmai.track.progress import ProgressTracker
@@ -39,7 +40,7 @@ def demo_telemetry(d) -> list[Telemetry]:
     return out
 
 
-def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker) -> tuple[int, float]:
+def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker, lidar=None) -> tuple[int, float]:
     """Adds one demo lap; returns (transitions added, total reward)."""
     want = buffer.frames.shape[1:]
     with np.load(path) as d:
@@ -55,27 +56,37 @@ def load_demo(path: Path, buffer: ReplayBuffer, tracker: ProgressTracker) -> tup
         return 0, 0.0
     actions = [from_controls(t.steer, t.gas, t.brake) for t in tels]
     # The inputs seen at step i+1 are the ones held between steps i and i+1.
-    return add_lap(buffer, tracker, frames, tels, actions[1:], actions[0])
+    return add_lap(buffer, tracker, frames, tels, actions[1:], actions[0], lidar)
 
 
 def add_lap(buffer: ReplayBuffer, tracker: ProgressTracker, frames, tels: list[Telemetry],
-            actions, first_prev_action) -> tuple[int, float]:
+            actions, first_prev_action, lidar=None, *, lap_ms: int | None = None) -> tuple[int, float]:
     """Adds one recorded attempt with observations and rewards recomputed against
     the tracker's current reference line. actions[i] is the action held from
     step i to step i+1; first_prev_action is the one before step 0. Returns
-    (transitions added, total reward)."""
+    (transitions added, total reward). With a lidar (env.lidar), its scans are
+    recomputed from each step's recorded pose against the map's geometry."""
+
+    def sense(t):
+        return lidar.features(t) if lidar is not None else None
+
     buffer.start_episode()
     tracker.reset(tels[0])
-    state = state_vector(tels[0], tracker.lookahead(tels[0]), first_prev_action, tracker.env)
+    if lidar is not None and hasattr(lidar, "reset"):
+        lidar.reset()
+    state = state_vector(tels[0], tracker.lookahead(tels[0]), first_prev_action, tracker.env, sense(tels[0]))
     total, added = 0.0, 0
+    no_frame = np.empty((0, 0), dtype=np.uint8)
+    frame = no_frame if frames is None else frames[0]
     for i in range(len(tels) - 1):
-        info = tracker.step(tels[i + 1])
-        buffer.add(frames[i], state, actions[i], info.reward - info.terms.get("pace", 0.0),
-                   terminal=info.done == "finished", pace=info.pace_inputs)
+        info = tracker.step(tels[i + 1], finish_lap_ms=lap_ms)
+        buffer.add(frame, state, actions[i], info.reward - info.terms.get("pace", 0.0),
+                   terminal=info.done in TERMINAL, pace=info.pace_inputs)
         total += info.reward
         added += 1
-        state = state_vector(tels[i + 1], info.lookahead, actions[i], tracker.env)
+        state = state_vector(tels[i + 1], info.lookahead, actions[i], tracker.env, sense(tels[i + 1]))
+        frame = no_frame if frames is None else frames[i + 1]
         if info.done:
             break
-    buffer.add(frames[i + 1], state)
+    buffer.add(frame, state)
     return added, total

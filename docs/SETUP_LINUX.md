@@ -36,8 +36,11 @@ Updates > Additional Drivers, pick the newest proprietary driver.)
 
 1. Install Steam (`sudo dnf install steam` with RPM Fusion nonfree, or the
    Flathub version).
-2. Steam > Settings > Compatibility: turn on Steam Play for all titles, using
-   **Proton Experimental**.
+2. Steam > Settings > Compatibility: turn on Steam Play for all titles. Any
+   current stable Proton works (tested on **Proton 11.0**). Experimental is
+   not needed and can drop frames on some systems. If you switch Proton
+   versions later, redo step 3 (vcrun2022 and Openplanet), since a new
+   version can rebuild the prefix.
 3. Install **Trackmania** (free on Steam). Start it once, log in to your
    Ubisoft account (the one with Club) in the Ubisoft Connect window that
    opens, and reach the main menu. Then quit.
@@ -127,7 +130,7 @@ tmai get-map            # optional: the tmrl-test map, into the prefix's My Maps
 ```
 
 In game: **F3 > Developer > (Re)load plugin > TMAI Telemetry**, then
-**TMAI Ghost** (or restart the game). Your own maps go in
+**TMAI Ghost** and **TMAI Map Geometry** (or restart the game). Your own maps go in
 `~/.steam/steam/steamapps/compatdata/2225070/pfx/drive_c/users/steamuser/Documents/Trackmania/Maps/My Maps/`.
 
 ## 8. Game settings
@@ -146,8 +149,11 @@ In game: **F3 > Developer > (Re)load plugin > TMAI Telemetry**, then
 - **Unplug your own controller** before binding and while the AI trains. With
   a real pad connected, the game can mix up the two pads, and the virtual
   pad's Back keeps respawning instead of giving up.
-- Keep the game window focused while training, at least until
-  `tmai gamepad-test` shows it takes input in the background.
+- Run `tmai focus-test` once with the map running. When it asks, click
+  another window. It checks that the game still takes the AI's pad input
+  and keeps its frame rate while unfocused. If both pass, you can use other
+  windows while it trains (do not minimise the game). If either fails, see
+  [TROUBLESHOOTING.md](TROUBLESHOOTING.md#the-ai-stops-driving-when-the-game-loses-focus).
 
 ## 9. Laptop power and heat
 
@@ -176,8 +182,7 @@ tmai telemetry          # numbers should change as you drive
 tmai gamepad-test       # the car should steer, brake and restart
 ```
 
-`tmai capture-test` and `tmai focus-test` are for the camera on Windows and do
-not apply here.
+`tmai capture-test` is for the camera on Windows and does not apply here.
 
 ## 11. First training run
 
