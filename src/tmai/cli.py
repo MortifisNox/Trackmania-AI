@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("start", help="one-click start from tmai_settings.json: plugins, dashboard, training")
     sub.add_parser("doctor", help="check this machine is ready to train")
     sub.add_parser("config", help="print the resolved configuration")
-    sub.add_parser("install-plugin", help="copy the TMAI Telemetry and TMAI Ghost plugins into Openplanet")
+    sub.add_parser("install-plugin", help="copy the TMAI Telemetry, Ghost and Map Geometry plugins into Openplanet")
     p = sub.add_parser("get-map", help="download training maps into My Maps")
     p.add_argument("names", nargs="*", default=["tmrl-test"])
     p = sub.add_parser("telemetry", help="print live telemetry from the plugin")
@@ -46,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("report", help="rebuild run.name's run report from its saved files")
     p = sub.add_parser("dashboard", help="open the training dashboard at http://127.0.0.1:8080")
     p.add_argument("--demo", action="store_true", help="feed it a fake trainer to try it without the game")
+    p = sub.add_parser("geometry-check", help="line run.track's exported collision geometry up with its demo laps")
+    p.add_argument("--export", metavar="FILE", default=None,
+                   help="use this geometry export (.tmgeo) instead of the one named like run.track")
+    p = sub.add_parser("lidar-test", help="drive yourself and watch the virtual lidar live")
+    p.add_argument("--seconds", type=float, default=60.0)
     p = sub.add_parser("drive-test", help="drive full throttle at 20 Hz and report timing")
     p.add_argument("--episodes", type=int, default=3)
     return parser
@@ -58,9 +63,9 @@ def _openplanet_dir() -> Path:
 
 
 def install_plugins() -> None:
-    from tmai.game.plugin import GHOST_PLUGIN_SRC, PLUGIN_SRC, install_plugin
+    from tmai.game.plugin import GEOMETRY_PLUGIN_SRC, GHOST_PLUGIN_SRC, PLUGIN_SRC, install_plugin
 
-    for src in (PLUGIN_SRC, GHOST_PLUGIN_SRC):
+    for src in (PLUGIN_SRC, GHOST_PLUGIN_SRC, GEOMETRY_PLUGIN_SRC):
         print(f"installed to {install_plugin(_openplanet_dir(), src)}")
 
 
@@ -110,9 +115,12 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"config error: {exc}")
         return 2
+    if settings is not None:
+        launch.apply_auto_run_name(cfg, settings, config_path=args.config, cli_overrides=args.set)
 
     if args.command == "start":
-        return launch.start(cfg, settings, settings_path, train)
+        return launch.start(cfg, settings, settings_path, train,
+                            config_path=Path(args.config) if args.config else None, overrides=args.set)
 
     if args.command == "config":
         print(json.dumps(cfg, indent=2))
@@ -127,7 +135,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "install-plugin":
         install_plugins()
-        print("In game: F3 > Developer > (Re)load plugin > TMAI Telemetry and TMAI Ghost, or restart the game.")
+        print("In game: F3 > Developer > (Re)load plugin > TMAI Telemetry, TMAI Ghost and TMAI Map Geometry, "
+              "or restart the game.")
         return 0
 
     if args.command == "get-map":
@@ -142,9 +151,13 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_dashboard(cfg, args.demo)
 
-    if args.command in ("record-demo", "build-reference", "progress-test"):
+    if args.command in ("record-demo", "build-reference", "progress-test", "geometry-check", "lidar-test"):
         from tmai.track import commands
 
+        if args.command == "geometry-check":
+            return commands.geometry_check(cfg, args.export)
+        if args.command == "lidar-test":
+            return commands.lidar_test(cfg, args.seconds)
         if args.command == "record-demo":
             return commands.record_demo(cfg, args.laps)
         if args.command == "build-reference":

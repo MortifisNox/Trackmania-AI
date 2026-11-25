@@ -270,6 +270,45 @@ def test_stability_reports_nan():
     assert stability(v)["verdict"].startswith("NaN")
 
 
+def test_report_ignores_warmup_nan_only(tmp_path):
+    from tmai.run.report import summarize
+
+    path = tmp_path / "episodes.csv"
+    path.write_text("episode,env_steps,updates,q\n1,10,0,nan\n2,20,1,50\n3,30,2,50\n")
+    q = summarize(tmp_path)["stability"]["q"]
+    assert q["nan"] == 0 and q["verdict"] == "stable"
+    with path.open("a") as f:
+        f.write("4,40,3,nan\n")
+    assert summarize(tmp_path)["stability"]["q"]["nan"] == 1
+
+
+@pytest.mark.parametrize(("first_q", "expected_metrics"), [("nan", 2), ("45", 3)])
+def test_report_uses_new_learner_updates_and_all_attempt_outcomes(tmp_path, first_q, expected_metrics):
+    from tmai.run.report import summarize
+
+    (tmp_path / "episodes.csv").write_text(
+        "episode,env_steps,updates,q,reward,progress\n"
+        f"1,10,100,{first_q},15,0.2\n"
+        "2,20,100,nan,nan,0.4\n"
+        "3,30,101,50,20,0.6\n"
+        "4,40,101,nan,30,nan\n"
+        "5,50,102,nan,40,1.0\n"
+    )
+    curves = summarize(tmp_path)["stability"]
+    assert curves["q"]["n"] == expected_metrics
+    assert curves["q"]["nan"] == 1 and curves["q"]["verdict"].startswith("NaN")
+    for metric in ("reward", "progress"):
+        assert curves[metric]["n"] == 5 and curves[metric]["nan"] == 1
+
+
+def test_report_skips_missing_split_and_sector_values():
+    from tmai.run.report import split_table
+
+    first, missed, finish = split_table([1000, 0, 3100], [1000, 2000, 3000])
+    assert first["sector_delta_ms"] == 0 and missed["ai_ms"] is None
+    assert finish["cp"] == 3 and finish["delta_ms"] == 100 and "ai_sector_ms" not in finish
+
+
 # -- best lap replay ------------------------------------------------------------
 def test_preserve_best_replay_picks_fastest(tmp_path):
     root = tmp_path / "Replays" / "TMAI"
@@ -337,8 +376,8 @@ def test_shutdown_hook_full_run(tmp_path):
             trainer.online.start_episode()
         add(trainer.online, k)
     trainer.tracker.splits.current = [12000, 24000, 35000]
-    tel = SimpleNamespace(last_cp_time_ms=35000, race_time_ms=35010)
-    hook.on_step(tel, SimpleNamespace(done="finished"))
+    tel = SimpleNamespace(last_cp_time_ms=24000, race_time_ms=35010)
+    hook.on_step(tel, SimpleNamespace(done="finished", lap_ms=35000))
     assert laps.path.read_text() == "35000\n"
     trainer.best_ms, trainer.episodes = 35000, 1
     hook.on_episode({"episode": 1, "env_steps": 200, "updates": 0})

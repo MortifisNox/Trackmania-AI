@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 LOG_STD_MIN, LOG_STD_MAX = -5.0, 2.0
+HL_GAUSS_BINS, HL_GAUSS_MIN, HL_GAUSS_MAX = 141, -150.0, 200.0
 
 
 class Encoder(nn.Module):
@@ -61,9 +62,10 @@ def mlp(n_in: int, hidden: int, n_out: int, dropout: float = 0.0, layer_norm: bo
 
 
 class Actor(nn.Module):
-    def __init__(self, feature_dim: int, state_dim: int, action_dim: int, hidden: int):
+    def __init__(self, feature_dim: int, state_dim: int, action_dim: int, hidden: int,
+                 layer_norm: bool = True):
         super().__init__()
-        self.net = mlp(feature_dim + state_dim, hidden, 2 * action_dim)
+        self.net = mlp(feature_dim + state_dim, hidden, 2 * action_dim, layer_norm=layer_norm)
 
     def forward(self, features, state, deterministic: bool = False):
         """Returns (action in [-1, 1], log-probability)."""
@@ -84,14 +86,36 @@ class Critic(nn.Module):
     """Ensemble of Q-heads; each head uses dropout and LayerNorm (DroQ)."""
 
     def __init__(self, feature_dim: int, state_dim: int, action_dim: int, hidden: int,
-                 num_critics: int, dropout: float):
+                 num_critics: int, dropout: float, *, q_bins: int = HL_GAUSS_BINS,
+                 q_min: float = HL_GAUSS_MIN, q_max: float = HL_GAUSS_MAX, hl_sigma_ratio: float = 0.75):
         super().__init__()
         n_in = feature_dim + state_dim + action_dim
-        self.heads = nn.ModuleList(mlp(n_in, hidden, 1, dropout, layer_norm=True) for _ in range(num_critics))
+        self.heads = nn.ModuleList(mlp(n_in, hidden, q_bins, dropout, layer_norm=True) for _ in range(num_critics))
+        self.distributional = q_bins > 1
+        if self.distributional:
+            self.q_min, self.q_max = q_min, q_max
+            width = (q_max - q_min) / (q_bins - 1)
+            self.register_buffer("support", torch.linspace(q_min, q_max, q_bins), persistent=False)
+            self.register_buffer(
+                "bin_edges", torch.linspace(q_min - width / 2, q_max + width / 2, q_bins + 1),
+                persistent=False,
+            )
+            self.cdf_scale = 1 / (math.sqrt(2) * hl_sigma_ratio * width)
 
     def forward(self, features, state, action) -> torch.Tensor:
         x = torch.cat([features, state, action], -1)
-        return torch.stack([h(x).squeeze(-1) for h in self.heads])   # (num_critics, B)
+        output = torch.stack([h(x) for h in self.heads])
+        return output if self.distributional else output.squeeze(-1)
+
+    def expected_q(self, output: torch.Tensor) -> torch.Tensor:
+        return (output.softmax(-1) * self.support).sum(-1) if self.distributional else output
+
+    def project(self, target: torch.Tensor) -> torch.Tensor:
+        """HL-Gauss mass in each bin, normalized over the finite support."""
+        clipped = target.clamp(self.q_min, self.q_max)
+        cdf = torch.erf((self.bin_edges - clipped.unsqueeze(-1)) * self.cdf_scale)
+        mass = cdf[..., 1:] - cdf[..., :-1]
+        return mass / (cdf[..., -1:] - cdf[..., :1])
 
 
 def random_shift(frames: torch.Tensor, pad: int = 4) -> torch.Tensor:

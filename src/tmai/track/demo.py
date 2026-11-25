@@ -10,6 +10,7 @@ import numpy as np
 
 from tmai.game.clock import RealtimeClock
 from tmai.game.protocol import Telemetry
+from tmai.track.splits import SplitTracker
 
 FIELDS = ("flags", "pos", "vel", "dir", "up", "speed", "gear", "rpm", "race_time_ms",
           "cp_count", "last_cp_time_ms", "wheel_material", "wheel_slip")
@@ -32,12 +33,10 @@ class LapBuffer:
         return len(self.actions)
 
     def cp_times(self) -> list[int]:
-        times, last = [], 0
+        splits = SplitTracker()
         for count, cp_time in zip(self.rows["cp_count"], self.rows["last_cp_time_ms"]):
-            if count > last:
-                times.append(int(cp_time))
-                last = count
-        return times
+            splits.update(int(count), int(cp_time))
+        return splits.current
 
     def save(self, folder: Path, lap_time_ms: int) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
@@ -70,7 +69,11 @@ def record_laps(game, folder: Path, laps: int, step_hz: float, log=print) -> lis
         if buf is not None and t.playing and t.race_time_ms >= 0:
             buf.add(frame, t)
         if buf is not None and t.finished:
-            lap_ms = t.last_cp_time_ms or t.race_time_ms
+            lap_ms = t.exact_finish_ms or t.race_time_ms
+            if t.last_cp_time_ms > 0 and (prev is None or (
+                t.cp_count > prev.cp_count and t.last_cp_time_ms > prev.last_cp_time_ms
+            )):
+                lap_ms = t.last_cp_time_ms
             buf.add(frame, t)
             path = buf.save(folder, lap_ms)
             saved.append(path)

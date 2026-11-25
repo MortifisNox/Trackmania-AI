@@ -17,11 +17,13 @@ class SplitTracker:
     def update(self, cp_count: int, last_cp_time_ms: int) -> int | None:
         """Record a newly crossed checkpoint. Returns the delta to the best
         split at that checkpoint in ms (negative = faster), or None."""
-        if cp_count <= len(self.current) or cp_count == 0:
+        if cp_count <= len(self.current) or last_cp_time_ms <= 0:
             return None
+        # Zero marks a checkpoint that fell between samples.
+        self.current.extend([0] * (cp_count - len(self.current) - 1))
         self.current.append(last_cp_time_ms)
-        i = len(self.current) - 1
-        return self.current[i] - self.best[i] if i < len(self.best) else None
+        i = cp_count - 1
+        return last_cp_time_ms - self.best[i] if i < len(self.best) and self.best[i] else None
 
     def finish(self) -> bool:
         """Call when the run finishes; keeps it if it is the new best."""

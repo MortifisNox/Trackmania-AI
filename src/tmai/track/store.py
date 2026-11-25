@@ -17,6 +17,8 @@ class TrackStore:
         self.demos = self.root / "demos"
         self.reference = self.root / "reference.npz"
         self.splits = self.root / "splits.json"
+        self.geometry = self.root / "geometry.json"       # which export and placement the lidar uses
+        self.geometry_png = self.root / "geometry.png"    # top-down picture with the demo laps
 
     def demo_files(self) -> list[Path]:
         return sorted(self.demos.glob("*.npz")) if self.demos.is_dir() else []

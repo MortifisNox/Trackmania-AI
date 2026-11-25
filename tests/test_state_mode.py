@@ -6,12 +6,12 @@ import pytest
 from test_rl import LENGTH, PLAYING, make_track, small_cfg, tel
 from tmai.config import ConfigError, load_config
 from tmai.game import protocol
-from tmai.rl.features import frame_size, lookahead_distances, state_dim, state_vector, uses_camera
+from tmai.rl.features import frame_size, lookahead_distances, state_dim, state_vector, uses_camera, uses_lidar
 from tmai.rl.replay import ReplayBuffer
 from tmai.run import snapshot
 
 STATE_SETS = ["env.observation=state", "env.lookahead_points=20", "env.lookahead_spacing_m=5",
-              "env.lookahead_growth=1.1"]
+              "env.lookahead_growth=1.1", "env.lidar=false"]
 
 
 def state_cfg(tmp_path, **train):
@@ -113,3 +113,76 @@ def test_trainer_learns_without_a_camera_and_uses_old_demos(tmp_path):
     image_cfg = small_cfg(tmp_path)    # same run folder, other mode: refused with a clear message
     with pytest.raises(FileNotFoundError, match="observation"):
         Trainer(image_cfg, game=StateGame(), device=torch.device("cpu"), log=lines.append)
+
+
+def test_state_guide_laps_resume_without_stored_frames(tmp_path):
+    from tmai.rl.env import TMEnv
+    from tmai.rl.train import Trainer
+
+    cfg = state_cfg(tmp_path, best_laps_kept=1)
+    make_track(tmp_path, cfg, with_demo=False)
+    trainer = Trainer(cfg, game=StateGame(), device=torch.device("cpu"), log=lambda *_: None)
+    ep = trainer.run_episode(TMEnv(cfg, trainer.game, trainer.tracker))
+    assert trainer.keep_best_lap(ep) and trainer.demo.frames.shape[1:] == (0, 0)
+    trainer.save_checkpoint()
+    resumed = Trainer(cfg, game=StateGame(), device=torch.device("cpu"), log=lambda *_: None)
+    assert resumed.best_laps[0]["frames"] is None
+    assert resumed.demo.transitions == trainer.demo.transitions == ep["steps"]
+
+
+def test_lidar_adds_its_features_last():
+    from tmai.rl.features import LIDAR_DIM, uses_lidar
+    from tmai.track.lidar import LidarLayout
+
+    assert LIDAR_DIM == LidarLayout().rays * LidarLayout().per_ray
+    env = load_config(None, [*STATE_SETS, "env.lidar=true"])["env"]
+    assert uses_lidar(env) and state_dim(env) == 18 + 60 + 3 + LIDAR_DIM
+    level = tel(dir=(0.0, 0.0, 1.0), up=(0.0, 1.0, 0.0))
+    points = np.tile([100.0, 0.0, 0.0], 20)
+    feats = np.linspace(0, 1, LIDAR_DIM, dtype=np.float32)
+    s = state_vector(level, points, (0, 0, 0), env, feats)
+    assert s.shape == (state_dim(env),) and np.allclose(s[-LIDAR_DIM:], feats)
+    with pytest.raises(ValueError, match="lidar"):
+        state_vector(level, points, (0, 0, 0), env)
+    assert not uses_lidar(load_config(None, ["env.lidar=true"])["env"])   # image mode ignores lidar
+
+
+def test_trainer_with_lidar_senses_the_road_edges(tmp_path):
+    import json
+
+    from test_geometry import quad, write_export
+    from tmai.rl.env import TMEnv
+    from tmai.rl.features import LIDAR_DIM
+    from tmai.rl.train import Trainer
+    from tmai.track.lidar import export_sha256
+    from tmai.track.store import TrackStore
+
+    cfg = load_config(None, [f"run.output_dir={tmp_path.as_posix()}", "run.track=T", "replay.capacity=2000",
+                             "train.batch_size=16", "model.hidden_dim=32", "env.step_hz=1000",
+                             "env.episode_timeout_s=5", *STATE_SETS, "env.lidar=true",
+                             "train.warmup_steps=20", "train.updates_per_step=1"])
+    make_track(tmp_path, cfg)
+    lines = []
+    with pytest.raises(FileNotFoundError, match="geometry-check"):
+        Trainer(cfg, game=StateGame(), device=torch.device("cpu"), log=lines.append)
+
+    # A road 32 m wide along +x (z from -16 to 16), its surface 0.4 m under the car.
+    store = TrackStore(cfg["run"]["output_dir"], "T")
+    blocks = [(f"road{k}", (k, 8, 0), 0, (1, 1, 1), [(0, [])]) for k in range(-1, int(LENGTH) // 32 + 3)]
+    export = write_export(tmp_path / "T.tmgeo", [(*quad(0, 32, -0.4, -16, 16), 16)], blocks)
+    store.geometry.write_text(json.dumps({"export": str(export), "export_sha256": export_sha256(export),
+                                      "placement": {"yoff": -64.0}}))
+
+    trainer = Trainer(cfg, game=StateGame(), device=torch.device("cpu"), log=lines.append)
+    assert trainer.lidar is not None and trainer.demo is not None
+    state = trainer.demo.state[0]
+    lidar = state[-LIDAR_DIM:].reshape(-1, 5)
+    # Straight across (+-90 degrees) the road ends 16 m away, about 16/60 of the range.
+    assert 0.2 < lidar[0, 0] < 0.35 and 0.2 < lidar[-1, 0] < 0.35
+    ep = trainer.run_episode(TMEnv(cfg, trainer.game, trainer.tracker, lidar=trainer.lidar))
+    assert ep["steps"] > 0
+    trainer.save_checkpoint()
+    no_lidar = load_config(None, [f"run.output_dir={tmp_path.as_posix()}", "run.track=T", "replay.capacity=2000",
+                                  "train.batch_size=16", "model.hidden_dim=32", *STATE_SETS])
+    with pytest.raises(FileNotFoundError, match="lidar"):
+        Trainer(no_lidar, game=StateGame(), device=torch.device("cpu"), log=lines.append)

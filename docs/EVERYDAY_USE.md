@@ -27,7 +27,8 @@ you will usually touch:
 | Setting | What to write |
 |---|---|
 | `map_name` | the map's name as the game shows it, e.g. `"Test1"` |
-| `run_name` | the folder under `runs\` for this training; leave `""` to use the map name (`<map>-state` in state mode, as on Linux), so every map keeps its own run. Your Test1 training from before the one-click start is in `runs\default`: write `"default"` here to continue it |
+| `run_name` | the folder under `runs\` for this training; leave `""` to use the map name (`<map>-state-lidar` in state mode with lidar, `<map>-state` with `"lidar": false`), so runs with different inputs never collide. Your Test1 training from before the one-click start is in `runs\default`: write `"default"` here to continue it |
+| `lidar` | `true` (default) turns on the virtual lidar in state mode (ignored in image mode). Needs a one-time offline `tmai --set "run.track=<map>" geometry-check` before training starts; set `false` to drive without lidar |
 | `map_has_checkpoints` | `true` or `false` |
 | `restart_button` | `"auto"` picks `BACK` (Give up, which you bind to View/Back in **Settings > Controls**) on maps with checkpoints and `B` on maps without; or name a button: `B`, `BACK`, `START`, `X`, `Y`, `A`, `LB`, `RB`, `DPAD_UP`... |
 | `fresh_start` | `true` once to start the run over; set it back to `false` after |
@@ -76,12 +77,15 @@ tmai install-plugin
 ```
 
 Then in the game press **F3**, open **Developer > (Re)load plugin** and click
-**TMAI Telemetry**, then do the same for **TMAI Ghost** (or simply restart the
-game). Open **F3 > Openplanet > Log** and check for:
+**TMAI Telemetry**, then do the same for **TMAI Ghost** and **TMAI Map
+Geometry** (or simply restart the game). Open **F3 > Openplanet > Log** and
+check for:
 
 - `Loaded plugin 'TMAI_Ghost' (version 0.2.0)` (or newer), followed by
   `TMAI Ghost: watching for the agent's finishes`
 - `TMAI: waiting for tmai on port 9000` from the telemetry plugin
+- once a map is started, `TMAI geometry: wrote ...` from the map geometry
+  plugin (only needed for the lidar, see [LIDAR_PLAN.md](LIDAR_PLAN.md))
 
 ### 3. Start training
 
@@ -158,7 +162,7 @@ ep  2176  finished   20.84s  progress 100.0%  reward   172.9  1180538 updates  a
 | `lap` | lap time, only when it finished |
 | `NEW BEST` | the fastest lap so far |
 | `(test lap)` | every 10th attempt drives without experimenting, to measure real pace |
-| `baseline` | the typical (median) lap of its last 20 laps; it is rewarded for beating this. Shows once 5 laps are finished |
+| `baseline` | the 25th-percentile pace of its last 30 finished laps; it is rewarded for beating this. Shows once 5 laps are finished |
 | `STALL` | the race clock ran while the agent missed driving steps (a hitch); occasional ones are harmless |
 
 The first ~1000 steps say `warming up`: it drives almost randomly before
@@ -177,7 +181,16 @@ every attempt to `runs\default\episodes.csv`.
    tmai --set run.track=Map2 record-demo --laps 3
    ```
 
-4. Train it in its own run folder, so it does not continue the Test1 run:
+4. In state mode (lidar is on by default), line up the map's exported collision
+   geometry once (offline, no game needed) before training:
+
+   ```bash
+   tmai --set "run.track=Map2" geometry-check
+   ```
+
+   (Or set `"lidar": false` in `tmai_settings.json` to drive without lidar.)
+
+5. Train it in its own run folder, so it does not continue the Test1 run:
 
    ```powershell
    tmai --set run.track=Map2 --set run.name=Map2 --set env.restart_button=BACK train

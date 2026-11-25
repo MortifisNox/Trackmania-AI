@@ -4,7 +4,8 @@ An AI that teaches itself to drive a Trackmania (2020) map and keeps getting
 faster for as long as you let it train. It runs on one gaming laptop
 (RTX 4050 Laptop GPU, 6 GB) next to the game, on Windows or on Linux (Proton).
 On Windows it can drive from the camera image plus game state; on Linux it
-drives from game state alone, read by its Openplanet plugin.
+drives from game state plus a virtual lidar (wall and road-edge distances cast
+against the map's exported collision geometry), read by its Openplanet plugins.
 
 You drive a few laps of a map yourself; the AI starts from your driving and
 then learns from its own attempts, about 20 decisions per second. You watch it
@@ -41,6 +42,7 @@ lap as an in-game replay.
 | record demo laps for a new map | [docs/PHASE2_TESTING.md](docs/PHASE2_TESTING.md) |
 | see how it works and why | [docs/DESIGN.md](docs/DESIGN.md), [docs/PLAN.md](docs/PLAN.md) |
 | give the AI more game state through the plugin | [docs/PLUGIN_RESEARCH.md](docs/PLUGIN_RESEARCH.md) |
+| give the AI a lidar of walls and road edges | [docs/LIDAR_PLAN.md](docs/LIDAR_PLAN.md) |
 
 ## Everyday use in short
 
@@ -51,6 +53,12 @@ the code, reinstalls the plugins, starts the dashboard at
 <http://127.0.0.1:8080> and trains. Stop with **Ctrl+C** (once, then wait)
 or the dashboard's **Stop safely** button; the report is in
 `runs\<run name>\report\report.html`.
+
+In state mode (default on Linux), virtual lidar is **on by default** and runs
+are stored in `runs/<map>-state-lidar` (or `runs/<map>-state` if you set
+`"lidar": false` in `tmai_settings.json`). Before your first lidar run on a
+map, run `tmai --set "run.track=<map>" geometry-check` once (offline, no game
+needed) after the TMAI Map Geometry plugin exports the map.
 
 In the game: offline, Openplanet Developer mode, ghosts off, map started
 from local play. Never online. The step-by-step version and every setting:
@@ -67,10 +75,12 @@ your settings file to any command.
 |---|---|
 | `tmai start` | what `start_training.bat` runs: plugins, dashboard and training from `tmai_settings.json` |
 | `tmai doctor` | checks drivers, CUDA, RAM, Openplanet and disk |
-| `tmai install-plugin` | copies the TMAI Telemetry and TMAI Ghost plugins into Openplanet |
+| `tmai install-plugin` | copies the TMAI Telemetry, Ghost and Map Geometry plugins into Openplanet |
 | `tmai get-map` | downloads the tmrl-test map into My Maps |
 | `tmai --set run.track=NAME record-demo` | records your laps of a map and builds its reference line |
 | `tmai --set run.track=NAME progress-test` | you drive; it prints progress, reward and splits live |
+| `tmai --set run.track=NAME geometry-check` | lines the map's exported collision geometry up with your demo laps, for the lidar |
+| `tmai --set run.track=NAME lidar-test` | you drive; it prints the virtual lidar's distances to walls and edges live |
 | `tmai --set run.track=NAME --set env.restart_button=BACK train` | the AI trains on the map (Ctrl+C stops and saves) |
 | `tmai dashboard` | the training dashboard at http://127.0.0.1:8080 |
 | `tmai stop` | asks a running training to stop and save |
@@ -89,8 +99,8 @@ The AI uses SAC (a reinforcement learning method) with a DroQ critic
 ensemble. It sees four small grayscale frames of the game plus the car's
 state from an Openplanet plugin, and drives through a virtual Xbox
 controller. It is rewarded for moving along the track and for beating the
-median of its own last 20 laps, so it keeps improving after it beats your
-demo. Every 10th attempt is a test lap without experimenting. Details and the
+25th-percentile pace of its own last 30 laps, so it keeps improving after it
+beats your demo. Every 10th attempt is a test lap without experimenting. Details and the
 alternatives that were rejected: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Contributing

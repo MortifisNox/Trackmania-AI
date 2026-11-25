@@ -87,6 +87,39 @@ Then run `pip install -e ".[game,dashboard,dev]"` again.
 that was interrupted. It is harmless; delete the folder starting with `~mai`
 in your Python's `Lib\site-packages` to make it go away.
 
+## The AI stops driving when the game loses focus
+
+Run `tmai focus-test` with the map running and click another window when it
+asks. If "game took pad input without focus" fails, the game (under Proton)
+ignores the controller while another window has focus. Try these in order,
+changing Steam > Trackmania > Properties > Launch options and restarting the
+game each time:
+
+1. **Let SDL deliver controller events in the background:**
+   ```
+   SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1 WINEDLLOVERRIDES="dinput8=n,b" %command%
+   ```
+2. **Do not use gamescope on this laptop.** Running Trackmania inside a
+   nested gamescope (`gamescope ... -- %command%`) crashed the whole desktop
+   on Fedora with the NVIDIA driver (2026-11-25).
+3. **Otherwise keep the game focused** while it trains: after pressing Enter
+   in `start_training.sh`, click the game window.
+
+If "game kept its frame rate" fails, or the test gets no telemetry at all,
+the game stopped drawing frames in the background. Under Wayland that
+happens when the window is fully covered or minimised. Turn VSync off in
+the game's graphics settings (keep the 60 FPS limiter), and keep the game
+window visible: beside your other windows, or on a second monitor.
+
+## `tmai: command not found`
+
+`tmai` lives in the project's `.venv`, and each new terminal has to activate
+it once. On Linux, from the repo folder, run `source .venv/bin/activate`; on
+Windows, run `.\.venv\Scripts\Activate.ps1`. The prompt then starts with
+`(.venv)`. You can also skip activating and run `.venv/bin/tmai ...`
+directly. `start_training.sh` and `start_training.bat` find the `.venv`
+themselves.
+
 ## Packages went into the wrong Python
 
 If pip's messages mention `...\AppData\Local\Programs\Python\Python311\...`,

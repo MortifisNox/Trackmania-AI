@@ -159,41 +159,60 @@ def drive_test(cfg: dict, episodes: int) -> int:
 
 def focus_test(cfg: dict, out_dir: Path) -> int:
     """Drives while another window has focus, to see whether the game still
-    takes controller input and the capture still sees the game."""
-    import cv2
+    takes controller input at full frame rate (and, with the camera, whether
+    the capture still sees the game). Throttle is tested before any restart,
+    so an ignored pad cannot pass for a working one."""
+    from tmai.game.interface import CheckpointRespawn, GameInterface
+    from tmai.rl.features import uses_camera
 
-    from tmai.game.interface import GameInterface
-
-    game = GameInterface(cfg, capture=True)
+    camera = uses_camera(cfg["env"])
+    game = GameInterface(cfg, capture=camera)
     results = []
     try:
-        print(f"capture backend: {type(game.capture).__name__}")
-        print("Click on THIS PowerShell window (or any other window) now, so the game is NOT focused.")
-        print("You can also drag another window over part of the game.")
+        if camera:
+            print(f"capture backend: {type(game.capture).__name__}")
+        print("Start the map and leave the car standing on the road. Then click on THIS")
+        print("terminal (or any other window), so the game is NOT focused. Keep it visible.")
         for i in range(8, 0, -1):
             print(f"  starting in {i}...", flush=True)
             time.sleep(1)
-        game.restart()
-        results.append(_check("restart without focus", True))
-        frames_before = game.capture.new_frames
+        frames_before = game.capture.new_frames if camera else 0
+        first = game.telemetry.wait(2.0)
         start = time.monotonic()
-        top = 0.0
+        top, t = 0.0, first
         while time.monotonic() - start < 4.0:
             game.act((0.0, 1.0, 0.0))
             frame, t = game.observe()
             top = max(top, t.speed_kmh)
             time.sleep(0.05)
         game.pad.release()
-        fps = (game.capture.new_frames - frames_before) / 4.0
-        results.append(_check("game took input without focus", top > 30, f"top speed {top:.0f} km/h"))
-        results.append(_check("capture without focus", fps >= 20, f"{fps:.0f} new frames/s"))
-        out_dir.mkdir(parents=True, exist_ok=True)
-        path = out_dir / "focus_test.png"
-        cv2.imwrite(str(path), cv2.resize(frame, (frame.shape[1] * 6, frame.shape[0] * 6),
-                                          interpolation=cv2.INTER_NEAREST))
-        print(f"saved what the agent saw to {path.resolve()} (it should show the game, not your other window)")
+        rate = (t.seq - first.seq) / (time.monotonic() - start)
+        took = top > first.speed_kmh + 20
+        results.append(_check("game took pad input without focus", took,
+                              f"speed {first.speed_kmh:.0f} -> top {top:.0f} km/h with full throttle"))
+        results.append(_check("game kept its frame rate without focus", rate >= 30,
+                              f"{rate:.0f} frames/s from the plugin (30 or more is fine)"))
+        if not took:
+            print("The game ignores the controller while another window has focus. "
+                  "See docs/TROUBLESHOOTING.md, 'The AI stops driving when the game loses focus'.")
+        else:
+            try:
+                game.restart()
+                results.append(_check("restart without focus", True))
+            except CheckpointRespawn as exc:
+                results.append(_check("restart button gives up", False, str(exc)))
+        if camera:
+            import cv2
+
+            fps = (game.capture.new_frames - frames_before) / 4.0
+            results.append(_check("capture without focus", fps >= 20, f"{fps:.0f} new frames/s"))
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / "focus_test.png"
+            cv2.imwrite(str(path), cv2.resize(frame, (frame.shape[1] * 6, frame.shape[0] * 6),
+                                              interpolation=cv2.INTER_NEAREST))
+            print(f"saved what the agent saw to {path.resolve()} (it should show the game, not your other window)")
     except TimeoutError as exc:
-        results.append(_check("restart without focus", False, str(exc)))
+        results.append(_check("telemetry without focus", False, str(exc)))
     finally:
         game.close()
     return 0 if all(results) else 1

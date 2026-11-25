@@ -12,12 +12,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from tmai.game.interface import CheckpointRespawn
+from tmai.game.interface import CheckpointRespawn, RestartAborted
 from tmai.rl.demos import add_lap, load_demo
-from tmai.rl.env import TERMINAL, TMEnv
-from tmai.rl.features import frame_size, state_dim, uses_camera
+from tmai.rl.env import FULL_GAS, TERMINAL, MapMismatchError, TMEnv
+from tmai.rl.features import frame_size, state_dim, uses_camera, uses_lidar
 from tmai.rl.replay import ReplayBuffer, concat_batches
-from tmai.rl.sac import Policy, SACAgent
+from tmai.rl.sac import CheckpointArchitectureError, Policy, SACAgent
+from tmai.run.atomic import atomic_open
 from tmai.track.baseline import PaceBaseline
 from tmai.track.progress import ProgressTracker
 from tmai.track.reference import ReferenceLine
@@ -26,7 +27,7 @@ from tmai.track.store import TrackStore
 
 EPISODE_FIELDS = ["episode", "wall_time", "steps", "end", "race_time_s", "progress", "reward",
                   "env_steps", "updates", "critic_loss", "actor_loss", "alpha", "q", "entropy",
-                  "late_p99_ms"]
+                  "late_p99_ms", "q_clip_frac"]
 EVAL_FIELDS = ["episode", "wall_time", "env_steps", "end", "lap_ms", "race_time_s", "progress", "best_eval_ms"]
 STALL_WARN_S = 0.1   # longest race-clock gap beyond one step that the log points out
 SYNC_EVERY = 20   # learner updates between refreshes of the driving policy
@@ -42,6 +43,25 @@ def anneal(start: float, end: float, steps: int, done: int) -> float:
 
 def pick_device() -> torch.device:
     return torch.device("cuda", torch.cuda.current_device()) if torch.cuda.is_available() else torch.device("cpu")
+
+
+def _prepare_episode_log(path: Path) -> bool:
+    """Upgrade the previous header before appending. Return whether to write a new header."""
+    if not path.exists():
+        return True
+    with path.open(newline="", encoding="utf-8") as f:
+        header = next(csv.reader(f), None)
+    if header is None:
+        return True
+    if header == EPISODE_FIELDS[:-1]:
+        with atomic_open(path, "w") as out:
+            writer = csv.writer(out, lineterminator="\n")
+            writer.writerow(EPISODE_FIELDS)
+            with path.open(newline="", encoding="utf-8") as f:
+                rows = csv.reader(f)
+                next(rows)
+                writer.writerows([*row, ""] for row in rows if len(row) == len(header))
+    return False
 
 
 class Trainer:
@@ -67,15 +87,28 @@ class Trainer:
             build_reference(cfg)
             ref = ReferenceLine.load(self.store.reference)
         rw = cfg["reward"]
-        self.baseline = PaceBaseline(ref, rw["pace_baseline_laps"], rw["pace_baseline_min_laps"])
+        self.baseline = PaceBaseline(ref, rw["pace_baseline_laps"], rw["pace_baseline_min_laps"],
+                                     rw.get("pace_baseline_percentile", 25.0))
         self.tracker = ProgressTracker(ref, cfg, SplitTracker.load(self.store.splits), self.baseline)
 
         self.run_dir = Path(run["output_dir"]) / run["name"]
         self.ckpt = self.run_dir / "checkpoints" / "latest.pt"
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
+        self.lidar = None
+        if uses_lidar(env):
+            from tmai.track.lidar import load_lidar
+
+            if not self.store.geometry.exists():
+                raise FileNotFoundError(f"env.lidar is on but {self.store.name!r} has no lined-up map geometry; "
+                                        "run tmai geometry-check first")
+            self.lidar = load_lidar(self.store.geometry)
+            self.log(f"LiDAR: ON ({len(self.lidar.world.tris):,} collision triangles from {self.store.geometry})")
+        else:
+            self.log("LiDAR: OFF" + ("" if uses_camera(env) else " (state mode drives without seeing the walls; "
+                                     "set env.lidar=true to turn it on)"))
+
         self.best_laps: list[dict] = []   # agent's fastest finished laps, fastest first
-        self.demo = self._load_demos()
         self.online = ReplayBuffer(cfg["replay"]["capacity"], frame_size(env), env["frame_stack"], state_dim(env))
         self.agent = SACAgent(cfg, self.device)
         self.policy = Policy(cfg, self.device)
@@ -83,6 +116,7 @@ class Trainer:
         self.best_eval_ms = None
         if self.ckpt.exists() and not fresh:
             self._load_checkpoint()
+        self.demo = self._load_demos()
         self.policy_state_used = self.agent.policy_state()
         self.policy.load(self.policy_state_used)
 
@@ -121,11 +155,13 @@ class Trainer:
         demo_tracker = ProgressTracker(self.tracker.ref, self.cfg, SplitTracker(self.tracker.splits.best),
                                        self.baseline)
         for f in files:
-            n, total = load_demo(f, buf, demo_tracker)
+            n, total = load_demo(f, buf, demo_tracker, self.lidar)
             if not quiet:
                 self.log(f"demo {f.name}: {n} transitions, reward {total:.1f}")
         for lap in self.best_laps:
-            add_lap(buf, demo_tracker, lap["frames"], lap["tels"], lap["actions"], NO_INPUT)
+            first_prev = FULL_GAS if env.get("launch_hold_gas", True) else NO_INPUT   # matches TMEnv.reset
+            add_lap(buf, demo_tracker, lap["frames"], lap["tels"], lap["actions"], first_prev, self.lidar,
+                    lap_ms=lap["lap_ms"])
         return buf if buf.transitions else None
 
     def keep_best_lap(self, ep: dict) -> bool:
@@ -162,17 +198,26 @@ class Trainer:
             self._entropy_sched = float("nan")
 
     def _load_checkpoint(self) -> None:
-        sd = torch.load(self.ckpt, map_location=self.device, weights_only=False)
+        sd = torch.load(self.ckpt, map_location="cpu", weights_only=False)
         mode = self.cfg["env"].get("observation", "image")
         saved = sd.get("observation", "image")
         if saved != mode:
             raise FileNotFoundError(
                 f"{self.ckpt} was trained with env.observation={saved}, this run uses {mode}; "
                 "give this run another run_name, or start it over with fresh_start")
-        self.agent.load_state_dict(sd["agent"])
+        lidar, saved_lidar = uses_lidar(self.cfg["env"]), bool(sd.get("lidar", False))
+        if lidar != saved_lidar:
+            raise FileNotFoundError(
+                f"{self.ckpt} was trained with env.lidar={str(saved_lidar).lower()}, this run uses "
+                f"{str(lidar).lower()}; give this run another run_name, or start it over with fresh_start")
+        try:
+            self.agent.load_state_dict(sd["agent"])
+        except CheckpointArchitectureError as exc:
+            raise FileNotFoundError(f"{self.ckpt}: {exc}") from None
         self.episodes, self.best_ms = sd["episodes"], sd["best_ms"]
         self.env_steps_before = sd["env_steps"]
         self.best_eval_ms = sd.get("best_eval_ms")
+        self.best_laps = sd.get("best_laps", [])[:self.cfg["train"]["best_laps_kept"]]
         self.baseline.load_state(sd.get("baseline_laps"))   # older checkpoints: rebuilt from new laps
         self.log(f"resumed from {self.ckpt} ({self.episodes} episodes, {self.agent.updates} updates)")
 
@@ -184,7 +229,9 @@ class Trainer:
         torch.save({"agent": agent, "episodes": self.episodes, "best_ms": self.best_ms,
                     "best_eval_ms": self.best_eval_ms, "env_steps": self.env_steps(),
                     "baseline_laps": self.baseline.state(),
-                    "observation": self.cfg["env"].get("observation", "image")}, tmp)
+                    "best_laps": self.best_laps,
+                    "observation": self.cfg["env"].get("observation", "image"),
+                    "lidar": uses_lidar(self.cfg["env"])}, tmp)
         tmp.replace(self.ckpt)
         return self.ckpt
 
@@ -225,74 +272,106 @@ class Trainer:
         batch = self.sample()
         with self.agent_lock:
             self.metrics = self.agent.update(batch)
-        self.run_updates += 1
-        if self.run_updates % SYNC_EVERY == 0:
+            self.run_updates += 1
+            reset = self.agent.reset_due
+            policy = self.agent.policy_state() if reset or self.run_updates % SYNC_EVERY == 0 else None
+        if reset:
+            self.log(f"shrink-and-perturb applied at learner update {self.agent.updates}")
+        if policy is not None:
             with self.policy_lock:
-                self._pending_policy = self.agent.policy_state()
+                self._pending_policy = policy
         return True
 
     def _learner(self) -> None:
         try:
             while not self.stop.is_set():
                 if not self.learn_once():
-                    time.sleep(0.002)
+                    self.stop.wait(0.002)
         except BaseException as exc:   # surfaced by the driving loop
             self.learner_error = exc
             self.stop.set()
 
     # -- driving -------------------------------------------------------------------
-    def _refresh_policy(self) -> None:
+    def _refresh_policy(self, latest: bool = False) -> None:
         with self.policy_lock:
             pending, self._pending_policy = self._pending_policy, None
+        if latest:
+            with self.agent_lock:
+                pending = self.agent.policy_state()
         if pending is not None:
             self.policy.load(pending)
             self.policy_state_used = pending
 
-    def run_episode(self, env: TMEnv, hooks=None, deterministic: bool = False) -> dict:
+    def run_episode(self, env: TMEnv, hooks=None, deterministic: bool = False, *,
+                    deadline: float = float("inf")) -> dict:
         """One attempt. deterministic=True drives a test lap without exploration
         noise (its transitions still go to the replay buffer)."""
-        self.tracker.best_lap_ms = self.best_ms   # for the personal-best bonus at the finish
-        obs = env.reset()
-        frames, tels, actions = [obs.frame], [env.last_tel], []
-        trace = [(env.last_tel.pos, env.last_tel.race_time_ms, env.last_tel.cp_count, env.last_tel.last_cp_time_ms)]
-        with self.replay_lock:
-            self.online.start_episode()
-        total, steps, reason, info = 0.0, 0, None, None
-        env.lateness.clear()
-        while reason is None and not self.stop.is_set():
-            if not deterministic:   # a test lap keeps one set of weights from start to finish
-                self._refresh_policy()
-            action = self.policy.act(obs.frames, obs.state, deterministic)
-            nxt, reward, reason, info = env.step(action)
+        obs = None
+        try:
+            self.tracker.best_lap_ms = self.best_ms   # for the personal-best bonus at the finish
+            if deterministic:
+                self._refresh_policy(latest=True)
+            def should_abort() -> bool:
+                # Stop, pause or the deadline while the restart waits (countdown, menus):
+                # the restart lets go of the pad and raises RestartAborted.
+                if self.stop.is_set() or time.monotonic() >= deadline:
+                    return True
+                return bool(hooks is not None and hooks.should_pause()) or self.stop.is_set()
+
+            initial = env.reset(should_abort=should_abort)
+            frames = [initial.frame] if initial.frame.size else None
+            tels, actions = [env.last_tel], []
             t = env.last_tel
-            frames.append(nxt.frame)
-            tels.append(t)
-            actions.append(np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0))
-            trace.append((t.pos, t.race_time_ms, t.cp_count, t.last_cp_time_ms))
-            if hooks is not None:
-                hooks.on_step(env.last_tel, info)
-                if reason is None and hooks.should_reset_episode():
-                    reason = "reset"   # dashboard: reset track, or pause mid-lap
-                    env.game.pad.release()
+            trace = [(t.pos, t.race_time_ms, t.cp_count, t.last_cp_time_ms)]
+            total, steps, reason, info = 0.0, 0, None, None
+            env.lateness.clear()
             with self.replay_lock:
-                # The pace term is left out and scored again at sampling time.
-                self.online.add(obs.frame, obs.state, action, reward - info.terms.get("pace", 0.0),
-                                terminal=reason in TERMINAL, pace=info.pace_inputs)
-            total += reward
-            steps += 1
-            obs = nxt
-        with self.replay_lock:
-            self.online.add(obs.frame, obs.state)
+                self.online.start_episode()
+                obs = initial
+            while reason is None and not self.stop.is_set() and time.monotonic() < deadline:
+                if not deterministic:
+                    self._refresh_policy()
+                action = self.policy.act(obs.frames, obs.state, deterministic)
+                nxt, reward, reason, info = env.step(action)
+                t = env.last_tel
+                if frames is not None:
+                    frames.append(nxt.frame)
+                tels.append(t)
+                actions.append(np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0))
+                trace.append((t.pos, t.race_time_ms, t.cp_count, t.last_cp_time_ms))
+                if hooks is not None:
+                    hooks.on_step(t, info)
+                    if reason is None and hooks.should_reset_episode():
+                        reason = "reset"   # dashboard: reset track, or pause mid-lap
+                        env.game.pad.release()
+                with self.replay_lock:
+                    # The pace term is left out and scored again at sampling time.
+                    self.online.add(obs.frame, obs.state, action, reward - info.terms.get("pace", 0.0),
+                                    terminal=reason in TERMINAL, pace=info.pace_inputs)
+                total += reward
+                steps += 1
+                obs = nxt
+        finally:
+            env.game.pad.release()
+            if obs is not None:
+                with self.replay_lock:
+                    self.online.add(obs.frame, obs.state)
         tel = env.last_tel
-        lap_ms = None
-        if reason == "finished":
-            lap_ms = tel.last_cp_time_ms or tel.race_time_ms
+        lap_ms = info.lap_ms if reason == "finished" else None
         late = sorted(env.lateness) or [0.0]
         # Race time the clock ran without a driving step (game or loop hitch, slow restart).
         clock = [0] + [max(t, 0) for _, t, *_ in trace]
         stall_s = max(0.0, max(np.diff(clock), default=0) / 1000.0 - 1.0 / self.cfg["env"]["step_hz"])
+        if lap_ms is not None:
+            pos, race_ms, count, cp_ms = trace[-1]
+            prev_pos, prev_ms, prev_count, _ = trace[-2]
+            if prev_ms <= lap_ms < race_ms:
+                fraction = (lap_ms - prev_ms) / (race_ms - prev_ms)
+                pos = tuple(a + (b - a) * fraction for a, b in zip(prev_pos, pos))
+            trace[-1] = (pos, lap_ms, count, lap_ms if count > prev_count else cp_ms)
         ep = {"end": reason or "stopped", "steps": steps, "reward": total, "lap_ms": lap_ms,
-              "race_time_s": tel.race_time_ms / 1000, "progress": info.progress if info else 0.0,
+              "race_time_s": (lap_ms if lap_ms is not None else tel.race_time_ms) / 1000,
+              "progress": info.progress if info else 0.0,
               "late_p99_ms": late[int(0.99 * (len(late) - 1))] * 1000, "trace": trace,
               "deterministic": deterministic, "stall_s": stall_s}
         if lap_ms is not None:
@@ -304,7 +383,8 @@ class Trainer:
         if ep["lap_ms"] is None:
             return
         pos = np.array([p for p, *_ in ep["trace"]], dtype=np.float64)
-        times = np.array([t for _, t, *_ in ep["trace"]], dtype=np.float64) / 1000.0
+        times = np.minimum([t for _, t, *_ in ep["trace"]], ep["lap_ms"]) / 1000.0
+        times[-1] = ep["lap_ms"] / 1000.0
         self.baseline.add_lap(pos, times)
 
     def is_eval_episode(self) -> bool:
@@ -342,22 +422,22 @@ class Trainer:
         if ref_ms - ep["lap_ms"] < gain_ms:
             return False
         pos = np.array([p for p, *_ in ep["trace"]], dtype=np.float64)
-        times = np.array([t for _, t, *_ in ep["trace"]], dtype=np.float64) / 1000.0
-        cps, last = [], 0
+        times = np.minimum([t for _, t, *_ in ep["trace"]], ep["lap_ms"]) / 1000.0
+        times[-1] = ep["lap_ms"] / 1000.0
+        splits = SplitTracker()
         for _, _, count, cp_ms in ep["trace"]:
-            if count > last:
-                cps.append(int(cp_ms))
-                last = count
+            splits.update(count, cp_ms)
         start = int(np.argmax(times >= 0))   # drop the countdown before the clock starts
         new = ReferenceLine.from_positions(pos[start:], self.cfg["track"]["reference_spacing_m"], times[start:])
+        new.times[-1] = times[-1]
         backup = self.store.root / "reference_demo.npz"
         if not backup.exists():
             ref.save(backup)
         new.save(self.store.reference)
-        SplitTracker(cps).save(self.store.splits)
+        SplitTracker(splits.current).save(self.store.splits)
         self.tracker.ref = new
         self.baseline.set_ref(new)
-        self.tracker.splits.best = cps
+        self.tracker.splits.best = splits.current
         self.log(f"new reference line: {ep['lap_ms'] / 1000:.3f}s lap replaces {ref_ms / 1000:.3f}s")
         self.demo = self._load_demos()   # demo rewards follow the new line
         return True
@@ -366,14 +446,16 @@ class Trainer:
         self.episodes += 1
         m = self.metrics
         row = {"episode": self.episodes, "wall_time": round(time.time(), 1), "steps": ep["steps"],
-               "end": ep["end"], "race_time_s": round(ep["race_time_s"], 2), "progress": round(ep["progress"], 4),
+               "end": ep["end"], "race_time_s": round(ep["race_time_s"], 3), "progress": round(ep["progress"], 4),
                "reward": round(ep["reward"], 2), "env_steps": self.env_steps_before + self.online.transitions,
                "updates": self.agent.updates, "late_p99_ms": round(ep["late_p99_ms"], 1),
-               **{k: round(m.get(k, float("nan")), 4) for k in ("critic_loss", "actor_loss", "alpha", "q", "entropy")}}
+               **{k: round(m.get(k, float("nan")), 4) for k in ("critic_loss", "actor_loss", "alpha", "q", "entropy")},
+               "q_clip_frac": round(m["q_clip_frac"], 4) if "q_clip_frac" in m else None}
         writer.writerow(row)
         f.flush()
         note = ""
         if ep["lap_ms"] is not None:
+            row["lap_ms"] = ep["lap_ms"]   # dashboard and shutdown hooks get the exact milliseconds
             if self.best_ms is None or ep["lap_ms"] < self.best_ms:
                 self.best_ms = ep["lap_ms"]
                 note = "  NEW BEST"
@@ -390,14 +472,18 @@ class Trainer:
                  f"alpha {m.get('alpha', float('nan')):.3f}  late p99 {ep['late_p99_ms']:.0f} ms{note}")
         return row
 
-    def _wait_while_paused(self, game, hooks) -> None:
+    def _wait_while_paused(self, game, hooks, deadline: float) -> None:
         if not hooks.should_pause():
             return
         game.pad.release()
         self.log("paused")
         while hooks.should_pause() and not self.stop.is_set():
-            time.sleep(0.2)
-        self.log("resumed")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            self.stop.wait(min(0.2, remaining))
+        if not self.stop.is_set():
+            self.log("resumed")
 
     def train(self, minutes: float | None = None, hooks=None) -> int:
         """Drive and learn until stopped. `hooks` (tmai.run.hooks.TrainerHooks)
@@ -410,33 +496,41 @@ class Trainer:
         hooks = hooks or TrainerHooks()
 
         game = self.game or GameInterface(self.cfg, capture=uses_camera(self.cfg["env"]))
-        env = TMEnv(self.cfg, game, self.tracker)
-        learner = threading.Thread(target=self._learner, name="learner", daemon=True)
-        csv_path = self.run_dir / "episodes.csv"
-        new_file = not csv_path.exists()
-        deadline = time.monotonic() + minutes * 60 if minutes else None
-        last_ckpt = time.monotonic()
-        every = self.cfg["train"]["checkpoint_every_min"] * 60
-        self.log(f"training on {self.store.name!r} with {self.device}; Ctrl+C stops and saves")
-        hooks.on_start(self)
-        learner.start()
+        learner = None
         try:
+            env = TMEnv(self.cfg, game, self.tracker, lidar=self.lidar)
+            learner = threading.Thread(target=self._learner, name="learner", daemon=True)
+            csv_path = self.run_dir / "episodes.csv"
+            deadline = time.monotonic() + minutes * 60 if minutes is not None else float("inf")
+            last_ckpt = time.monotonic()
+            every = self.cfg["train"]["checkpoint_every_min"] * 60
+            self.log(f"training on {self.store.name!r} with {self.device}; Ctrl+C stops and saves")
+            hooks.on_start(self)
+            learner.start()
+            new_file = _prepare_episode_log(csv_path)
             with open(csv_path, "a", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=EPISODE_FIELDS)
                 if new_file:
                     writer.writeheader()
-                while not self.stop.is_set():
-                    self._wait_while_paused(game, hooks)
-                    if self.stop.is_set():
+                while not self.stop.is_set() and time.monotonic() < deadline:
+                    self._wait_while_paused(game, hooks, deadline)
+                    if self.stop.is_set() or time.monotonic() >= deadline:
                         break
                     try:
-                        ep = self.run_episode(env, hooks, deterministic=self.is_eval_episode())
-                    except CheckpointRespawn as exc:
+                        ep = self.run_episode(env, hooks, deterministic=self.is_eval_episode(), deadline=deadline)
+                    except (CheckpointRespawn, MapMismatchError) as exc:
                         self.log(f"stopping: {exc}")
                         break
+                    except RestartAborted:
+                        game.pad.release()
+                        continue   # the loop top handles stop, the deadline and pause
                     except TimeoutError as exc:
+                        game.pad.release()
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
                         self.log(f"game not responding ({exc}); retrying")
-                        time.sleep(2.0)
+                        self.stop.wait(min(2.0, remaining))
                         continue
                     row = self._log_episode(ep, writer, f)
                     if ep["deterministic"]:
@@ -448,14 +542,13 @@ class Trainer:
                     if time.monotonic() - last_ckpt >= every:
                         self.save_checkpoint()
                         last_ckpt = time.monotonic()
-                    if deadline and time.monotonic() >= deadline:
-                        break
         except KeyboardInterrupt:
             self.log("stopping...")
         finally:
-            self.stop.set()
-            learner.join(timeout=30)
             game.pad.release()
+            self.stop.set()
+            if learner is not None and learner.ident is not None:
+                learner.join(timeout=30)
             if self.game is None:
                 game.close()
             if own_save:

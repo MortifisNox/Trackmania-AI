@@ -5,8 +5,9 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from dataclasses import replace
 
-from tmai.game.protocol import PACKET_SIZE, ProtocolError, Telemetry, decode
+from tmai.game.protocol import ProtocolError, Telemetry, decode, newer_seq, packet_size_from_header
 
 
 class TelemetryClient:
@@ -20,6 +21,9 @@ class TelemetryClient:
         self.host, self.port = host, port
         self._latest: Telemetry | None = None
         self._received_at = 0.0
+        self._seq_offset = 0
+        self._wire_seq = None
+        self._last_seq = None
         self._cond = threading.Condition()
         self._stop = threading.Event()
         self.connected = False
@@ -32,7 +36,8 @@ class TelemetryClient:
 
     def close(self) -> None:
         self._stop.set()
-        self._thread.join(timeout=2.0)
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -43,7 +48,12 @@ class TelemetryClient:
                     self._read_loop(sock)
             except (OSError, ProtocolError) as exc:
                 self.error = str(exc)
-            self.connected = False
+            finally:
+                with self._cond:
+                    self.connected = False
+                    self._latest, self._received_at = None, 0.0
+                    self._wire_seq = None
+                    self._cond.notify_all()
             self._stop.wait(0.5)
 
     def _read_loop(self, sock: socket.socket) -> None:
@@ -56,14 +66,31 @@ class TelemetryClient:
             if not chunk:
                 return
             buf += chunk
-            whole = len(buf) // PACKET_SIZE
-            if whole == 0:
+            newest = None
+            offset = 0
+            while offset < len(buf):
+                size = packet_size_from_header(memoryview(buf)[offset:])
+                if size is None or len(buf) - offset < size:
+                    break
+                packet = decode(buf[offset:offset + size])
+                offset += size
+                if self._wire_seq is not None and not newer_seq(packet.seq, self._wire_seq):
+                    continue
+                if self._wire_seq is None and self._last_seq is not None:
+                    # A reloaded plugin can restart its counter at zero.
+                    seq = (packet.seq + self._seq_offset) & 0xffffffff
+                    if not newer_seq(seq, self._last_seq):
+                        self._seq_offset = self._last_seq + 1 - packet.seq
+                self._wire_seq = packet.seq
+                self._last_seq = (packet.seq + self._seq_offset) & 0xffffffff
+                newest = packet
+            if offset:
+                buf = buf[offset:]
+            if newest is None:
                 continue
-            newest = buf[(whole - 1) * PACKET_SIZE: whole * PACKET_SIZE]
-            buf = buf[whole * PACKET_SIZE:]
-            packet = decode(newest)
             with self._cond:
-                self._latest, self._received_at = packet, time.monotonic()
+                self._latest = replace(newest, seq=self._last_seq)
+                self._received_at = time.monotonic()
                 self._cond.notify_all()
 
     def latest(self) -> Telemetry | None:
@@ -75,18 +102,24 @@ class TelemetryClient:
         with self._cond:
             return time.monotonic() - self._received_at if self._latest else float("inf")
 
-    def wait(self, timeout: float = 5.0, after_seq: int | None = None) -> Telemetry:
-        """Block until a packet (newer than `after_seq`, if given) arrives."""
+    def wait(self, timeout: float = 5.0, after_seq: int | None = None,
+             max_age: float | None = None) -> Telemetry:
+        """Block until a packet arrives that is newer than `after_seq` (if given)
+        and was received at most `max_age` seconds ago (if given), so a stalled
+        or vanished game is never read as the present."""
         deadline = time.monotonic() + timeout
         with self._cond:
             while True:
                 pkt = self._latest
-                if pkt is not None and (after_seq is None or pkt.seq != after_seq):
+                fresh = max_age is None or time.monotonic() - self._received_at <= max_age
+                if pkt is not None and fresh and (after_seq is None or newer_seq(pkt.seq, after_seq)):
                     return pkt
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    what = "no fresh telemetry" if pkt is not None else "no telemetry"
                     raise TimeoutError(
-                        f"no telemetry from the plugin on {self.host}:{self.port} "
+                        f"{what} from the plugin on {self.host}:{self.port} "
                         f"({self.error or 'connected but silent'})"
                     )
+                # A stale packet is only replaced by a new one, which notifies.
                 self._cond.wait(remaining)

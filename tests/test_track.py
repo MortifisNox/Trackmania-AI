@@ -106,11 +106,135 @@ def test_teleport_gets_no_credit_and_wrong_way_ends():
     tr, _ = make_tracker()
     tr.reset(tel(pos=(0.0, 0.0, 0.0)))
     assert tr.step(tel(pos=(150.0, 0.0, 0.0))).delta_m == 0.0
-    tr.reset(tel(pos=(100.0, 0.0, 0.0)))
+    tr.reset(tel(pos=(0.0, 0.0, 0.0)))
+    for x in (25, 50, 75, 100):
+        tr.step(tel(pos=(x, 0, 0)))
     for x in (95.0, 90.0, 85.0, 80.0):
         info = tr.step(tel(pos=(x, 0.0, 0.0)))
     assert info.done is None
     assert tr.step(tel(pos=(74.0, 0.0, 0.0))).done == "wrong_way"
+
+
+def test_start_projection_ignores_neighboring_finish():
+    ref = ReferenceLine.from_positions([(0, 0, 0), (100, 0, 0), (100, 0, 5), (0, 0, 5)], 1)
+    tr = ProgressTracker(ref, load_config())
+    spawn = tel(pos=(0, 0, 4))
+    assert ref.project(spawn.pos)[1] > 200
+    tr.reset(spawn)
+    assert tr.step(tel(pos=(2, 0, 0))).delta_m == pytest.approx(2)
+
+
+def test_hinted_projection_stays_local_and_progress_resyncs_after_ten_jumps():
+    cfg = load_config()
+    ref = ReferenceLine.from_positions(straight(), 1.0, np.linspace(0, 20, 50))
+    tr = ProgressTracker(ref, cfg)
+    tr.reset(tel())
+    for x in range(20, 200, 20):
+        tr.step(tel(pos=(x, 0, 0)))
+    old_idx = tr._idx
+    assert ref.project((30, 0, 0), hint=old_idx)[1] > 150
+    for _ in range(9):
+        info = tr.step(tel(pos=(30, 0, 0)))
+        assert info.done is None and info.delta_m == 0 and info.progress_m == 180
+        assert tr._idx == old_idx and info.pace_inputs[:2] == (0.9, 0.9)
+    # One good sample breaks the streak.
+    assert tr.step(tel(pos=(181, 0, 0))).delta_m == 1
+    for _ in range(9):
+        assert tr.step(tel(pos=(30, 0, 0))).progress_m == 181
+    synced = tr.step(tel(pos=(30, 0, 0)))
+    assert synced.done is None and synced.delta_m == 0 and synced.progress_m == 30
+    assert tr.step(tel(pos=(31, 0, 0))).delta_m == 1
+
+
+def test_hitch_credits_local_forward_progress_and_keeps_lookahead_current():
+    ref = ReferenceLine.from_positions(straight(), 1.0, np.linspace(0, 200 / 136, 50))
+    cfg = load_config(overrides=["reward.pace_per_s=10", "env.step_hz=20"])
+    tr = ProgressTracker(ref, cfg)
+    tr.reset(tel())
+
+    speed = 480 / 3.6
+    hitch = tr.step(tel(pos=(34, 0, 0), speed=speed, race_time_ms=250))
+    assert hitch.delta_m == pytest.approx(34)
+    assert hitch.pace_inputs == pytest.approx((0, 34 / 200, 0.25))
+    assert hitch.terms.get("pace", 0.0) == pytest.approx(0.0)
+    assert hitch.lookahead[0] == pytest.approx(cfg["env"]["lookahead_spacing_m"])
+    next_step = tr.step(tel(pos=(41, 0, 0), speed=speed, race_time_ms=300))
+    assert next_step.delta_m == pytest.approx(7)
+
+
+def test_hitch_keeps_the_strict_limit_for_local_backward_snaps():
+    cfg = load_config(overrides=["track.max_progress_jump_m=10"])
+    tr = ProgressTracker(ReferenceLine.from_positions(straight(), 1.0), cfg)
+    tr.reset(tel())
+    for i in range(1, 6):
+        tr.step(tel(pos=(i * 10, 0, 0), race_time_ms=i * 50))
+
+    backward = tr.step(tel(pos=(35, 0, 0), speed=133, race_time_ms=500))
+    assert backward.delta_m == 0 and backward.progress_m == 50
+    assert backward.lateral_m == 0
+
+
+def test_hitch_rejects_a_far_forward_branch_and_preserves_local_lateral():
+    tr, _ = make_tracker()
+    tr.reset(tel())
+    pos = (150, 0, 2)
+    local_lateral = tr.ref.project(pos, hint=tr._idx)[2]
+    assert local_lateral > 15
+    for i in range(1, 10):
+        jump = tr.step(tel(pos=pos, speed=133, race_time_ms=i * 1000))
+        assert jump.progress_m == jump.delta_m == 0
+        assert jump.lateral_m == pytest.approx(local_lateral)
+
+    synced = tr.step(tel(pos=pos, speed=133, race_time_ms=10000))
+    assert synced.progress_m == 150 and synced.delta_m == 0
+    assert synced.lateral_m == pytest.approx(2)
+
+
+@pytest.mark.parametrize(("finish_cp", "finish_ms", "flag", "expected"), [
+    (1, 9000, 0, 20_370), (2, 20_361, 0, 20_361), (1, 20_361, protocol.FLAG_FINISH_TIME, 20_361),
+])
+def test_finish_timing_prefers_exact_time_otherwise_interpolates(finish_cp, finish_ms, flag, expected):
+    tr, cfg = make_tracker()
+    tr.best_lap_ms = 20_400
+    tr.reset(tel())
+    for x in range(20, 200, 20):
+        tr.step(tel(pos=(x, 0, 0), cp_count=1, last_cp_time_ms=9000))
+    tr.step(tel(pos=(197, 0, 0), race_time_ms=20_340, cp_count=1, last_cp_time_ms=9000))
+    finish = tr.step(tel(pos=(202, 0, 0), race_time_ms=20_390, cp_count=finish_cp,
+                         last_cp_time_ms=finish_ms, flags=protocol.FLAG_PLAYER | protocol.FLAG_FINISHED | flag))
+    assert finish.lap_ms == expected
+    assert finish.terms["personal_best"] == pytest.approx(cfg["reward"]["pb_bonus_per_s"] * (20_400 - expected) / 1000)
+
+
+@pytest.mark.parametrize(("pos", "vel", "step_hz", "expected"), [
+    (198, (100, 0, 0), 20, 20_410),   # velocity along the final segment
+    (198, (0, 0, 0), 20, 20_410),     # progress rate when velocity is missing
+    (198.5, (20, 0, 0), 20, 20_440),  # cap at 50 ms instead of extrapolating 75 ms
+    (199, (20, 0, 0), 60, 20_406),    # stay within the fractional step period
+    (194, (20, 0, 0), 20, 20_390),    # still too far from the endpoint
+    (198, (-100, 0, 0), 20, 20_390),  # moving away from the endpoint
+])
+def test_finish_packet_just_short_of_reference_uses_bounded_extrapolation(pos, vel, step_hz, expected):
+    cfg = load_config(overrides=[f"env.step_hz={step_hz}"])
+    tr = ProgressTracker(ReferenceLine.from_positions(straight(), 1.0), cfg)
+    tr.reset(tel())
+    for x in range(20, 200, 20):
+        tr.step(tel(pos=(x, 0, 0)))
+    tr.step(tel(pos=(193, 0, 0), race_time_ms=20_340))
+    finish = tr.step(tel(pos=(pos, 0, 0), vel=vel, race_time_ms=20_390,
+                         flags=protocol.FLAG_PLAYER | protocol.FLAG_FINISHED))
+    assert finish.lap_ms == expected
+
+
+def test_skipped_and_duplicate_splits_keep_waypoint_indices(tmp_path):
+    splits = SplitTracker([1000, 2000, 3000])
+    lap = LapBuffer()
+    for count, ms, delta in ((1, 900, -100), (1, 910, None), (3, 2950, -50), (2, 1900, None)):
+        lap.add(None, tel(cp_count=count, last_cp_time_ms=ms))
+        assert splits.update(count, ms) == delta
+    assert splits.current == lap.cp_times() == [900, 0, 2950]
+    with np.load(lap.save(tmp_path, 2950)) as recorded:
+        assert recorded["cp_times"].tolist() == [900, 0, 2950]
 
 
 def test_split_bonus_and_finish():
@@ -183,6 +307,8 @@ def test_reference_times_roundtrip_and_pace_reward(tmp_path):
 
 
 def test_stalls_and_late_starts_cost_the_time_they_lose():
+    from tmai.track.baseline import MAX_PACE_LOSS_S
+
     xs = np.linspace(0, 100, 101)
     ref = ReferenceLine.from_positions(np.stack([xs, 0 * xs, 0 * xs], 1), 1.0, xs / 10.0)   # 10 m/s
     cfg = load_config(None, ["reward.pace_per_s=10", "reward.time_penalty=0.01", "env.step_hz=20"])
@@ -191,11 +317,14 @@ def test_stalls_and_late_starts_cost_the_time_they_lose():
     normal = tr.step(tel(pos=(0.5, 0.0, 0.0), race_time_ms=50))        # on the reference pace
     assert normal.terms["time"] == pytest.approx(-0.01) and "pace" not in normal.terms
     stall = tr.step(tel(pos=(1.0, 0.0, 0.0), race_time_ms=1050))       # 1 s on the clock, one step driven
-    assert stall.terms["pace"] == pytest.approx(10 * (0.05 - 1.0))     # the whole 0.95 s lost, not capped at 0.2
+    # Per-step pace loss is bounded so single-step hitches stay within critic Q support,
+    # while time_penalty still charges the full elapsed race time.
+    assert stall.terms["pace"] == pytest.approx(-10 * MAX_PACE_LOSS_S)
     assert stall.terms["time"] == pytest.approx(-0.01 * 20)
     tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=1000))              # clock already at 1 s when driving starts
     late = tr.step(tel(pos=(0.5, 0.0, 0.0), race_time_ms=1050))
-    assert late.terms["pace"] == pytest.approx(10 * (0.05 - 1.05))
+    assert late.terms["pace"] == pytest.approx(-10 * MAX_PACE_LOSS_S)
+    assert late.terms["time"] == pytest.approx(-0.01 * 21)
     tr.reset(tel(pos=(0.0, 0.0, 0.0), race_time_ms=-1500))             # countdown frames (demos) cost nothing extra
     countdown = tr.step(tel(pos=(0.0, 0.0, 0.0), race_time_ms=-1450))
     assert "pace" not in countdown.terms and countdown.terms["time"] == pytest.approx(-0.01)
@@ -207,15 +336,15 @@ def test_pace_baseline_follows_the_average_of_recent_laps():
     xs = np.linspace(0, 100, 101)
     line = np.stack([xs, 0 * xs, 0 * xs], 1)
     ref = ReferenceLine.from_positions(line, 1.0, xs / 10.0)              # reference lap: 10 s at 10 m/s
-    base = PaceBaseline(ref, laps=3, min_laps=2)
+    base = PaceBaseline(ref, laps=3, min_laps=2, percentile=50)
     assert not base.from_recent_laps and base.lap_time_s == pytest.approx(10.0)
     assert base.pace(0.0, 0.1, 1.0) == pytest.approx(0.0)                # on reference pace
     base.add_lap(line, xs / 8.0)                                          # 12.5 s lap: one is not enough
     assert base.lap_time_s == pytest.approx(10.0)
     base.add_lap(line, xs / 5.0)                                          # 20 s lap
     assert base.from_recent_laps and base.lap_time_s == pytest.approx(16.25)   # median of two = mean
-    # 10 m in 1 s: 1.625 s for the baseline, but gains are capped at 0.2 s a step
-    assert base.pace(0.0, 0.1, 1.0) == pytest.approx(0.2)
+    # 10 m in 1 s: 1.625 s for the baseline, but gains are capped at 0.1 s a step
+    assert base.pace(0.0, 0.1, 1.0) == pytest.approx(0.1)
     assert base.pace(0.0, 0.01, 0.1) == pytest.approx(0.1625 - 0.1)
     base.add_lap(line, xs / 10.0)                                         # laps of 12.5, 20 and 10 s
     assert base.lap_time_s == pytest.approx(12.5)

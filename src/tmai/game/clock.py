@@ -25,19 +25,16 @@ class RealtimeClock:
         now = self._now()
         if self._next is None:
             self._next = now + self.period
-            self.steps += 1
-            return 0.0
         wait = self._next - now
-        if wait > 0:
-            self._sleep(wait)
-            late = max(0.0, self._now() - self._next)
-            self._next += self.period
-        else:
+        if wait < -self.period:
+            self.overruns += 1
             late = -wait
-            if late > self.period:
-                self.overruns += 1
-                self._next = now + self.period
-            else:
-                self._next += self.period
+            self._next = now + self.period
+            self._sleep(self.period)
+        else:
+            if wait > 0:
+                self._sleep(wait)
+            late = max(0.0, self._now() - self._next)
+        self._next += self.period
         self.steps += 1
         return late
